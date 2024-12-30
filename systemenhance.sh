@@ -198,12 +198,26 @@ fi
 
 # 检测其他常用服务的端口并开放
 echo "正在检测并开放常用服务端口..."
-ss -tuln | grep -E "tcp|udp" | awk '{print $4}' | cut -d: -f2 | sort | uniq | while read port; do
-  if ! ufw status | grep -q "$port"; then
+
+# 使用 ss 或 netstat 检测所有监听的端口
+ss -tuln | grep -E "tcp|udp" | awk '{print $5}' | cut -d: -f2 | sort | uniq | while read port; do
+  # 跳过端口为空或不存在的情况
+  if [ -z "$port" ]; then
+    continue
+  fi
+
+  # 检查是否已经开放此端口
+  if ! sudo ufw status | grep -q "$port"; then
     echo "正在开放端口 $port..."
-    ufw allow $port/tcp
+    sudo ufw allow $port/tcp   # 开放 TCP 协议的端口
+    sudo ufw allow $port/udp   # 开放 UDP 协议的端口
   fi
 done
+
+# 重新加载防火墙规则，确保更改生效
+sudo ufw reload
+echo "所有占用端口已成功开放。"
+
 
 echo "所有已使用的端口已开放。"
 
