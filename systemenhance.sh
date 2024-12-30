@@ -240,8 +240,6 @@ ufw status verbose
 # 检查 Fail2Ban 状态
 fail2ban-client status
 
-#!/bin/bash
-
 # 显示当前时区
 echo "当前时区是：$(timedatectl show --property=Timezone --value)"
 
@@ -251,15 +249,16 @@ echo "1) 上海 (东八区, UTC+8)"
 echo "2) 纽约 (美国东部时区, UTC-5)"
 echo "3) 洛杉矶 (美国西部时区, UTC-8)"
 echo "4) 伦敦 (零时区, UTC+0)"
-echo "5) 悉尼 (东十区, UTC+10)"
-echo "6) 东京 (东九区, UTC+9)"
-echo "7) 巴黎 (欧洲中部时区, UTC+1)"
-echo "8) 墨尔本 (澳大利亚东部时区, UTC+10)"
-echo "9) 北京 (东八区, UTC+8)"
-echo "10) 维持当前时区"
+echo "5) 东京 (东九区, UTC+9)"
+echo "6) 巴黎 (欧洲中部时区, UTC+1)"
+echo "7) 曼谷 (东七区, UTC+7)"
+echo "8) 悉尼 (东十区, UTC+10)"
+echo "9) 迪拜 (海湾标准时区, UTC+4)"
+echo "10) 里约热内卢 (巴西时间, UTC-3)"
+echo "11) 维持当前时区"
 
 # 获取用户输入
-read -p "请输入选项 (1/2/3/4/5/6/7/8/9/10): " timezone_choice
+read -p "请输入选项 (1/2/3/4/5/6/7/8/9/10/11): " timezone_choice
 
 # 根据用户选择设置时区
 case $timezone_choice in
@@ -280,26 +279,30 @@ case $timezone_choice in
     sudo timedatectl set-timezone Europe/London
     ;;
   5)
-    echo "正在设置时区为 悉尼 (东十区, UTC+10)..."
-    sudo timedatectl set-timezone Australia/Sydney
-    ;;
-  6)
     echo "正在设置时区为 东京 (东九区, UTC+9)..."
     sudo timedatectl set-timezone Asia/Tokyo
     ;;
-  7)
+  6)
     echo "正在设置时区为 巴黎 (欧洲中部时区, UTC+1)..."
     sudo timedatectl set-timezone Europe/Paris
     ;;
+  7)
+    echo "正在设置时区为 曼谷 (东七区, UTC+7)..."
+    sudo timedatectl set-timezone Asia/Bangkok
+    ;;
   8)
-    echo "正在设置时区为 墨尔本 (澳大利亚东部时区, UTC+10)..."
-    sudo timedatectl set-timezone Australia/Melbourne
+    echo "正在设置时区为 悉尼 (东十区, UTC+10)..."
+    sudo timedatectl set-timezone Australia/Sydney
     ;;
   9)
-    echo "正在设置时区为 北京 (东八区, UTC+8)..."
-    sudo timedatectl set-timezone Asia/Shanghai
+    echo "正在设置时区为 迪拜 (海湾标准时区, UTC+4)..."
+    sudo timedatectl set-timezone Asia/Dubai
     ;;
   10)
+    echo "正在设置时区为 里约热内卢 (巴西时间, UTC-3)..."
+    sudo timedatectl set-timezone America/Sao_Paulo
+    ;;
+  11)
     echo "您选择维持当前时区，脚本将继续执行。"
     ;;
   *)
@@ -309,6 +312,7 @@ esac
 
 # 提示用户时区已设置完成
 echo "时区设置完成！"
+
 
 # 检测当前的 SWAP 配置
 echo "正在检测当前的内存和 SWAP 配置..."
