@@ -76,9 +76,16 @@ if ! systemctl is-active --quiet sshd; then
 else
   # 检测当前所有的 SSH 服务端口
   echo "正在检测当前 SSH 服务端口..."
-  # 尝试从 SSH 配置文件中获取端口
+
+  # 尝试从 SSH 配置文件中获取端口，忽略带注释的行
   ssh_config_file="/etc/ssh/sshd_config"
-  ssh_ports=$(grep -E "^Port " "$ssh_config_file" | awk '{print $2}' | sort | uniq)
+  if [ ! -f "$ssh_config_file" ]; then
+    echo "错误：找不到 SSH 配置文件 $ssh_config_file"
+    exit 1
+  fi
+
+  # 提取配置文件中的所有不带注释的 Port 设置，去除注释和空行
+  ssh_ports=$(grep -E "^\s*Port\s+" "$ssh_config_file" | grep -v '^#' | awk '{print $2}' | sort | uniq)
 
   # 如果配置文件中没有找到端口，则默认使用 22
   if [ -z "$ssh_ports" ]; then
@@ -90,7 +97,7 @@ else
     fi
     ssh_ports="22"
   else
-    echo "检测到以下 SSH 端口："
+    echo "检测到以下 SSH 端口（不带注释的）："
     echo "$ssh_ports"
     echo
     read -p "请选择要保留的 SSH 端口（输入端口号）： " selected_port
