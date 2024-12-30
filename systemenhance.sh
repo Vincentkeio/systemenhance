@@ -69,10 +69,29 @@ echo "常用组件安装完成。"
 
 # 三、启用防火墙和 fail2ban
 
-# 检测当前 SSH 服务是否启用
+# 检测 SSH 服务是否启用的方法
 echo "正在检测 SSH 服务状态..."
-if ! systemctl is-active --quiet sshd; then
+
+# 使用 systemctl 检测 SSH 服务
+if systemctl is-active --quiet sshd; then
+  ssh_status="enabled"
+else
+  # 如果 systemctl 检测失败，检查 sshd 进程是否存在
+  if pgrep -x "sshd" > /dev/null; then
+    ssh_status="enabled (via process)"
+  else
+    ssh_status="disabled"
+  fi
+fi
+
+if [ "$ssh_status" == "disabled" ]; then
   echo "当前未启用 SSH 服务，跳过检查端口的步骤。"
+  echo "注意：如果继续执行脚本，可能会导致所有 SSH 端口关闭，进而无法通过 SSH 登录系统。"
+  read -p "您确定要继续吗？（继续请输入 y，取消请输入 n）： " choice
+  if [[ "$choice" != "y" && "$choice" != "Y" ]]; then
+    echo "脚本执行已取消。"
+    exit 1
+  fi
 else
   # 检测当前所有的 SSH 服务端口
   echo "正在检测当前 SSH 服务端口..."
@@ -90,7 +109,7 @@ else
   # 如果配置文件中没有找到端口，则默认使用 22
   if [ -z "$ssh_ports" ]; then
     echo "未在 SSH 配置文件中找到端口设置，默认端口为 22。"
-    read -p "是否继续执行脚本？(y/n): " choice
+    read -p "是否继续执行脚本？（继续请输入 y，取消请输入 n）： " choice
     if [[ "$choice" != "y" && "$choice" != "Y" ]]; then
       echo "脚本执行已取消。"
       exit 1
@@ -215,15 +234,10 @@ case $log_choice in
     find /var/log -type f -name '*.log' -exec rm -f {} \;
     ;;
   5)
-    echo "您选择不清理日志，跳过此步骤。"
+    echo "不清理日志文件。"
     ;;
   *)
-    echo "无效选项，退出脚本。"
-    exit 1
-    ;;
-esac
-
-echo "日志文件清理完成！"
+    echo "日志文件清理完成！"
 
 # 最终提示
 echo "所有操作已完成！"
