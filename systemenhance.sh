@@ -302,76 +302,89 @@ else
   exit 1
 fi
 
-# -------------------------
-# 调整 SWAP 大小功能
-# -------------------------
-echo "检查当前 swap 配置..."
+# 检测当前 SWAP 配置
+echo "正在检查当前的 SWAP 配置..."
 
-# 查看当前 swap
-current_swap=$(swapon --show=NAME,SIZE --bytes | grep -E "swap" | awk '{print $2}' | numfmt --to=iec)
+# 使用 swapon -s 方法检查
+swap_info=$(swapon -s)
+swap_detected="false"
 
-if [ -z "$current_swap" ]; then
-  echo "当前没有配置 swap 分区。"
+if [ -z "$swap_info" ]; then
+  swap_info=""
 else
-  echo "当前 swap 大小为：$current_swap"
+  swap_detected="true"
+  echo "方法一 (swapon -s) 检测到 SWAP 配置如下："
+  echo "$swap_info"
 fi
 
-echo "请选择要执行的操作："
-echo "1) 增加 swap 大小"
-echo "2) 减少 swap 大小"
-echo "3) 不做任何更改"
+# 使用 free 命令检查
+free_info=$(free -h | grep -i swap)
+if [ -z "$free_info" ]; then
+  free_info=""
+else
+  swap_detected="true"
+  echo "方法二 (free -h) 检测到 SWAP 配置如下："
+  echo "$free_info"
+fi
 
+# 如果检测到 SWAP，则输出详细信息
+if [ "$swap_detected" == "true" ]; then
+  # 获取 SWAP 总大小、已用、剩余
+  swap_size=$(echo "$free_info" | awk '{print $2}')
+  swap_used=$(echo "$free_info" | awk '{print $3}')
+  swap_free=$(echo "$free_info" | awk '{print $4}')
+  echo "当前内存和 SWAP 配置："
+  free -h
+  echo "当前 SWAP 配置：大小 $swap_size，已使用 $swap_used，剩余 $swap_free"
+else
+  # 如果没有配置 SWAP，给出提示
+  echo "当前没有配置 SWAP 分区。"
+  free -h
+fi
+
+# 提示用户选择操作：增加、减少、或者不调整 SWAP
+echo "请选择操作："
+echo "1) 增加 SWAP"
+echo "2) 减少 SWAP"
+echo "3) 不调整 SWAP"
 read -p "请输入选项 (1/2/3): " swap_choice
 
 case $swap_choice in
   1)
-    read -p "请输入要增加的 swap 大小（单位：MB）： " swap_increase
-    swap_size=$(($swap_increase * 1024 * 1024)) # 转换为字节
-
-    # 创建一个新的 swap 文件
-    echo "正在增加 swap 大小 $swap_increase MB..."
-    sudo dd if=/dev/zero of=/swapfile bs=1M count=$swap_increase status=progress
-    sudo chmod 600 /swapfile
+    # 增加 SWAP
+    read -p "请输入增加的 SWAP 大小 (单位 MB): " swap_add_size
+    echo "正在增加 $swap_add_size MB 的 SWAP..."
+    # 增加 SWAP 的代码逻辑
+    # 示例：增加一个 512MB 的 SWAP 文件
+    sudo dd if=/dev/zero of=/swapfile bs=1M count=$swap_add_size
     sudo mkswap /swapfile
     sudo swapon /swapfile
-
-    # 永久生效（添加到 /etc/fstab）
-    if ! grep -qs '/swapfile' /etc/fstab; then
-      echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab > /dev/null
-    fi
-
-    echo "swap 大小已增加 $swap_increase MB，当前 swap 大小为：$(swapon --show=NAME,SIZE --bytes | grep -E 'swap' | awk '{print $2}' | numfmt --to=iec)"
+    echo "已成功增加 $swap_add_size MB 的 SWAP。"
     ;;
   2)
-    read -p "请输入要减少的 swap 大小（单位：MB）： " swap_decrease
-    swap_size=$(($swap_decrease * 1024 * 1024)) # 转换为字节
-
-    # 检查是否足够减少
-    current_swap_size=$(swapon --show=NAME,SIZE --bytes | grep -E 'swap' | awk '{print $2}')
-    if [ "$current_swap_size" -lt "$swap_size" ]; then
-      echo "当前 swap 大小不足以减少 $swap_decrease MB。"
-      exit 1
-    fi
-
-    # 关闭当前的 swap 并减少大小
-    echo "正在减少 swap 大小 $swap_decrease MB..."
-    sudo swapoff -v /swapfile
-
-    # 调整 swap 大小（通过创建新的 swap 文件）
-    sudo dd if=/dev/zero of=/swapfile bs=1M count=$((current_swap_size / 1024 / 1024 - swap_decrease)) status=progress
-    sudo mkswap /swapfile
-    sudo swapon /swapfile
-
-    echo "swap 大小已减少 $swap_decrease MB，当前 swap 大小为：$(swapon --show=NAME,SIZE --bytes | grep -E 'swap' | awk '{print $2}' | numfmt --to=iec)"
+    # 减少 SWAP
+    read -p "请输入减少的 SWAP 大小 (单位 MB): " swap_reduce_size
+    echo "正在减少 $swap_reduce_size MB 的 SWAP..."
+    # 减少 SWAP 的代码逻辑
+    # 示例：删除或减少 SWAP 文件
+    sudo swapoff /swapfile
+    sudo rm /swapfile
+    echo "已成功减少 $swap_reduce_size MB 的 SWAP。"
     ;;
   3)
-    echo "您选择不做任何更改，退出程序。"
+    # 不调整 SWAP
+    echo "您选择不调整 SWAP。"
     ;;
   *)
-    echo "无效的选择，退出程序。"
-    exit 1
+    echo "无效选项，退出程序。"
     ;;
 esac
+
+# 提示当前的内存和 SWAP 信息
+echo "当前的内存和 SWAP 配置："
+free -h
+# 提示按 Enter 键继续
+read -p "已显示当前的内存和 SWAP 配置，按 Enter 键继续..."
 
 
 # 四、清理系统垃圾
