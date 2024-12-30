@@ -242,65 +242,54 @@ fail2ban-client status
 
 #!/bin/bash
 
-# -------------------------
-# 修改时区功能
-# -------------------------
-echo "当前系统的时区是：$(timedatectl | grep 'Time zone' | awk '{print $3}')"
-echo "以下是可用的时区及代表城市，选择一个时区来设置："
-echo "1) 东八区 (Asia/Shanghai)"
-echo "2) 美国东部时间 (America/New_York)"
-echo "3) 美国西部时间 (America/Los_Angeles)"
-echo "4) 欧洲中央时间 (Europe/Paris)"
-echo "5) 英国时间 (Europe/London)"
-echo "6) 澳大利亚东部时间 (Australia/Sydney)"
-echo "7) 日本时间 (Asia/Tokyo)"
-echo "8) 印度标准时间 (Asia/Kolkata)"
-echo "9) 维持当前时区"
+# 显示当前时区
+echo "当前时区是：$(timedatectl show --property=Timezone --value)"
 
-read -p "请输入你想选择的时区编号 (1-9): " timezone_choice
+# 显示时区选择菜单
+echo "请选择要设置的时区："
+echo "1) 上海 (东八区)"
+echo "2) 北京 (东八区)"
+echo "3) 纽约 (东五区)"
+echo "4) 洛杉矶 (西八区)"
+echo "5) 伦敦 (零时区)"
+echo "6) 维持当前时区"
 
+# 获取用户输入
+read -p "请输入选项 (1/2/3/4/5/6): " timezone_choice
+
+# 根据用户选择设置时区
 case $timezone_choice in
   1)
-    new_timezone="Asia/Shanghai"
+    echo "正在设置时区为 上海 (东八区)..."
+    sudo timedatectl set-timezone Asia/Shanghai
     ;;
   2)
-    new_timezone="America/New_York"
+    echo "正在设置时区为 北京 (东八区)..."
+    sudo timedatectl set-timezone Asia/Shanghai
     ;;
   3)
-    new_timezone="America/Los_Angeles"
+    echo "正在设置时区为 纽约 (东五区)..."
+    sudo timedatectl set-timezone America/New_York
     ;;
   4)
-    new_timezone="Europe/Paris"
+    echo "正在设置时区为 洛杉矶 (西八区)..."
+    sudo timedatectl set-timezone America/Los_Angeles
     ;;
   5)
-    new_timezone="Europe/London"
+    echo "正在设置时区为 伦敦 (零时区)..."
+    sudo timedatectl set-timezone Europe/London
     ;;
   6)
-    new_timezone="Australia/Sydney"
-    ;;
-  7)
-    new_timezone="Asia/Tokyo"
-    ;;
-  8)
-    new_timezone="Asia/Kolkata"
-    ;;
-  9)
-    echo "您选择维持当前时区，跳过时区设置。"
-    exit 0
+    echo "您选择维持当前时区，脚本将继续执行。"
     ;;
   *)
-    echo "无效选择，请选择1到9之间的编号。"
-    exit 1
+    echo "无效选项，选择维持当前时区。"
     ;;
 esac
 
-# 设置时区
-if timedatectl set-timezone "$new_timezone"; then
-  echo "时区已成功更改为：$new_timezone"
-else
-  echo "无法设置时区，请检查时区是否正确。"
-  exit 1
-fi
+# 提示用户时区已设置完成
+echo "时区设置完成！"
+
 # 检测当前的 SWAP 配置
 echo "正在检测当前的内存和 SWAP 配置..."
 
