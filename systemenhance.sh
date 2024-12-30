@@ -149,9 +149,44 @@ else
   fi
 fi
 
-# 启用防火墙
-echo "正在启用防火墙 (ufw)..."
-ufw enable
+# 四、启用防火墙（UFW 或 firewalld）
+echo "正在检查并启用防火墙..."
+
+# 检查是否安装了ufw
+if ! command -v ufw &>/dev/null; then
+  echo "未检测到 ufw，正在安装 ufw..."
+  if command -v apt &>/dev/null; then
+    # Ubuntu 或 Debian 系统
+    sudo apt update
+    sudo apt install -y ufw
+  elif command -v yum &>/dev/null; then
+    # CentOS 或 RHEL 系统
+    sudo yum install -y ufw
+  fi
+fi
+
+# 确保ufw防火墙启用
+if ! sudo ufw status &>/dev/null; then
+  echo "正在启用 ufw 防火墙..."
+  sudo ufw enable
+fi
+
+# 开放指定端口
+sudo ufw allow ssh
+echo "SSH 端口已开放。"
+
+# 开放新端口
+sudo ufw allow $new_port/tcp
+echo "新端口 $new_port 已开放。"
+
+# 关闭旧端口
+sudo ufw delete allow $current_port/tcp || echo "警告：未找到旧端口 $current_port 的规则"
+echo "旧端口 $current_port 已关闭。"
+
+# 重新加载防火墙规则
+sudo ufw reload
+echo "防火墙规则已重新加载。"
+
 
 # 开放所选的 SSH 端口
 if [ "$ssh_ports" != "22" ]; then
