@@ -69,39 +69,48 @@ echo "常用组件安装完成。"
 
 # 三、启用防火墙和 fail2ban
 
-# 检测当前所有的 SSH 服务端口
-echo "正在检测当前 SSH 服务端口..."
-ssh_ports=$(ss -tuln | grep ssh | awk '{print $4}' | cut -d: -f2 | sort | uniq)
-
-if [ -z "$ssh_ports" ]; then
-  echo "错误：未找到 SSH 服务端口！"
-  # 询问用户是否继续
-  read -p "是否继续执行脚本？(y/n): " choice
-  if [[ "$choice" != "y" && "$choice" != "Y" ]]; then
-    echo "脚本执行已取消。"
-    exit 1
-  fi
+# 检测当前 SSH 服务是否启用
+echo "正在检测 SSH 服务状态..."
+if ! systemctl is-active --quiet sshd; then
+  echo "当前未启用 SSH 服务，跳过检查端口的步骤。"
 else
-  echo "检测到以下 SSH 端口："
-  echo "$ssh_ports"
-  echo
-  read -p "请选择要保留的 SSH 端口（输入端口号）： " selected_port
+  # 检测当前所有的 SSH 服务端口
+  echo "正在检测当前 SSH 服务端口..."
+  # 尝试从 SSH 配置文件中获取端口
+  ssh_config_file="/etc/ssh/sshd_config"
+  ssh_ports=$(grep -E "^Port " "$ssh_config_file" | awk '{print $2}' | sort | uniq)
 
-  # 检查输入端口是否有效
-  if ! echo "$ssh_ports" | grep -q "$selected_port"; then
-    echo "错误：所选端口无效，脚本退出。"
-    exit 1
-  fi
-
-  echo "您选择保留的 SSH 端口为: $selected_port"
-  
-  # 关闭其他 SSH 端口
-  for port in $ssh_ports; do
-    if [ "$port" != "$selected_port" ]; then
-      echo "正在关闭 SSH 端口 $port..."
-      ufw deny $port/tcp
+  # 如果配置文件中没有找到端口，则默认使用 22
+  if [ -z "$ssh_ports" ]; then
+    echo "未在 SSH 配置文件中找到端口设置，默认端口为 22。"
+    read -p "是否继续执行脚本？(y/n): " choice
+    if [[ "$choice" != "y" && "$choice" != "Y" ]]; then
+      echo "脚本执行已取消。"
+      exit 1
     fi
-  done
+    ssh_ports="22"
+  else
+    echo "检测到以下 SSH 端口："
+    echo "$ssh_ports"
+    echo
+    read -p "请选择要保留的 SSH 端口（输入端口号）： " selected_port
+
+    # 检查输入端口是否有效
+    if ! echo "$ssh_ports" | grep -q "$selected_port"; then
+      echo "错误：所选端口无效，脚本退出。"
+      exit 1
+    fi
+
+    echo "您选择保留的 SSH 端口为: $selected_port"
+    
+    # 关闭其他 SSH 端口
+    for port in $ssh_ports; do
+      if [ "$port" != "$selected_port" ]; then
+        echo "正在关闭 SSH 端口 $port..."
+        ufw deny $port/tcp
+      fi
+    done
+  fi
 fi
 
 # 启用防火墙
@@ -109,9 +118,12 @@ echo "正在启用防火墙 (ufw)..."
 ufw enable
 
 # 开放所选的 SSH 端口
-echo "正在开放所选的 SSH 端口 $selected_port..."
-ufw allow $selected_port/tcp
-echo "已开放 SSH 端口 $selected_port"
+if [ "$ssh_ports" != "22" ]; then
+  echo "正在开放所选的 SSH 端口 $selected_port..."
+  ufw allow $selected_port/tcp
+else
+  echo "默认端口 22 已开放"
+fi
 
 # 检测其他常用服务的端口并开放
 echo "正在检测并开放常用服务端口..."
