@@ -118,11 +118,19 @@ else
   else
     echo "检测到以下 SSH 端口（不带注释的）："
     echo "$ssh_ports"
-    echo
-    read -p "请选择要保留的 SSH 端口（输入端口号）： " selected_port
+    echo "请选择要保留的 SSH 端口："
+    i=1
+    for port in $ssh_ports; do
+      echo "$i) $port"
+      ((i++))
+    done
+    read -p "请输入端口号（例如 1, 2, 3...）： " selected_option
 
-    # 检查输入端口是否有效
-    if ! echo "$ssh_ports" | grep -q "$selected_port"; then
+    # 获取选择的端口
+    selected_port=$(echo "$ssh_ports" | sed -n "${selected_option}p")
+
+    # 检查输入的端口是否有效
+    if [ -z "$selected_port" ]; then
       echo "错误：所选端口无效，脚本退出。"
       exit 1
     fi
@@ -130,11 +138,13 @@ else
     echo "您选择保留的 SSH 端口为: $selected_port"
     
     # 关闭其他 SSH 端口
+    i=1
     for port in $ssh_ports; do
       if [ "$port" != "$selected_port" ]; then
         echo "正在关闭 SSH 端口 $port..."
         ufw deny $port/tcp
       fi
+      ((i++))
     done
   fi
 fi
@@ -226,6 +236,7 @@ case $log_choice in
     find /var/log -type f -name '*.log' -mtime +30 -exec rm -f {} \;
     ;;
   3)
+   
     echo "正在清除半年的日志..."
     find /var/log -type f -name '*.log' -mtime +180 -exec rm -f {} \;
     ;;
