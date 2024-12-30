@@ -240,6 +240,140 @@ ufw status verbose
 # 检查 Fail2Ban 状态
 fail2ban-client status
 
+#!/bin/bash
+
+# -------------------------
+# 修改时区功能
+# -------------------------
+echo "当前系统的时区是：$(timedatectl | grep 'Time zone' | awk '{print $3}')"
+echo "以下是可用的时区及代表城市，选择一个时区来设置："
+echo "1) 东八区 (Asia/Shanghai)"
+echo "2) 美国东部时间 (America/New_York)"
+echo "3) 美国西部时间 (America/Los_Angeles)"
+echo "4) 欧洲中央时间 (Europe/Paris)"
+echo "5) 英国时间 (Europe/London)"
+echo "6) 澳大利亚东部时间 (Australia/Sydney)"
+echo "7) 日本时间 (Asia/Tokyo)"
+echo "8) 印度标准时间 (Asia/Kolkata)"
+echo "9) 维持当前时区"
+
+read -p "请输入你想选择的时区编号 (1-9): " timezone_choice
+
+case $timezone_choice in
+  1)
+    new_timezone="Asia/Shanghai"
+    ;;
+  2)
+    new_timezone="America/New_York"
+    ;;
+  3)
+    new_timezone="America/Los_Angeles"
+    ;;
+  4)
+    new_timezone="Europe/Paris"
+    ;;
+  5)
+    new_timezone="Europe/London"
+    ;;
+  6)
+    new_timezone="Australia/Sydney"
+    ;;
+  7)
+    new_timezone="Asia/Tokyo"
+    ;;
+  8)
+    new_timezone="Asia/Kolkata"
+    ;;
+  9)
+    echo "您选择维持当前时区，跳过时区设置。"
+    exit 0
+    ;;
+  *)
+    echo "无效选择，请选择1到9之间的编号。"
+    exit 1
+    ;;
+esac
+
+# 设置时区
+if timedatectl set-timezone "$new_timezone"; then
+  echo "时区已成功更改为：$new_timezone"
+else
+  echo "无法设置时区，请检查时区是否正确。"
+  exit 1
+fi
+
+# -------------------------
+# 调整 SWAP 大小功能
+# -------------------------
+echo "检查当前 swap 配置..."
+
+# 查看当前 swap
+current_swap=$(swapon --show=NAME,SIZE --bytes | grep -E "swap" | awk '{print $2}' | numfmt --to=iec)
+
+if [ -z "$current_swap" ]; then
+  echo "当前没有配置 swap 分区。"
+else
+  echo "当前 swap 大小为：$current_swap"
+fi
+
+echo "请选择要执行的操作："
+echo "1) 增加 swap 大小"
+echo "2) 减少 swap 大小"
+echo "3) 不做任何更改"
+
+read -p "请输入选项 (1/2/3): " swap_choice
+
+case $swap_choice in
+  1)
+    read -p "请输入要增加的 swap 大小（单位：MB）： " swap_increase
+    swap_size=$(($swap_increase * 1024 * 1024)) # 转换为字节
+
+    # 创建一个新的 swap 文件
+    echo "正在增加 swap 大小 $swap_increase MB..."
+    sudo dd if=/dev/zero of=/swapfile bs=1M count=$swap_increase status=progress
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+
+    # 永久生效（添加到 /etc/fstab）
+    if ! grep -qs '/swapfile' /etc/fstab; then
+      echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab > /dev/null
+    fi
+
+    echo "swap 大小已增加 $swap_increase MB，当前 swap 大小为：$(swapon --show=NAME,SIZE --bytes | grep -E 'swap' | awk '{print $2}' | numfmt --to=iec)"
+    ;;
+  2)
+    read -p "请输入要减少的 swap 大小（单位：MB）： " swap_decrease
+    swap_size=$(($swap_decrease * 1024 * 1024)) # 转换为字节
+
+    # 检查是否足够减少
+    current_swap_size=$(swapon --show=NAME,SIZE --bytes | grep -E 'swap' | awk '{print $2}')
+    if [ "$current_swap_size" -lt "$swap_size" ]; then
+      echo "当前 swap 大小不足以减少 $swap_decrease MB。"
+      exit 1
+    fi
+
+    # 关闭当前的 swap 并减少大小
+    echo "正在减少 swap 大小 $swap_decrease MB..."
+    sudo swapoff -v /swapfile
+
+    # 调整 swap 大小（通过创建新的 swap 文件）
+    sudo dd if=/dev/zero of=/swapfile bs=1M count=$((current_swap_size / 1024 / 1024 - swap_decrease)) status=progress
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+
+    echo "swap 大小已减少 $swap_decrease MB，当前 swap 大小为：$(swapon --show=NAME,SIZE --bytes | grep -E 'swap' | awk '{print $2}' | numfmt --to=iec)"
+    ;;
+  3)
+    echo "您选择不做任何更改，退出程序。"
+    ;;
+  *)
+    echo "无效的选择，退出程序。"
+    exit 1
+    ;;
+esac
+
+
 # 四、清理系统垃圾
 echo "开始清理系统垃圾..."
 
