@@ -117,14 +117,14 @@ else
     ssh_ports="22"
   else
     echo "检测到以下 SSH 端口（不带注释的）："
-    echo "$ssh_ports"
-    echo "请选择要保留的 SSH 端口："
     i=1
     for port in $ssh_ports; do
       echo "$i) $port"
       ((i++))
     done
-    read -p "请输入端口号（例如 1, 2, 3...）： " selected_option
+
+    # 提示用户选择要保留的端口
+    read -p "请输入端口号的序号（例如 1, 2, 3...）： " selected_option
 
     # 获取选择的端口
     selected_port=$(echo "$ssh_ports" | sed -n "${selected_option}p")
@@ -236,7 +236,6 @@ case $log_choice in
     find /var/log -type f -name '*.log' -mtime +30 -exec rm -f {} \;
     ;;
   3)
-   
     echo "正在清除半年的日志..."
     find /var/log -type f -name '*.log' -mtime +180 -exec rm -f {} \;
     ;;
@@ -245,10 +244,23 @@ case $log_choice in
     find /var/log -type f -name '*.log' -exec rm -f {} \;
     ;;
   5)
-    echo "不清理日志文件。"
+    echo "不清理日志文件，跳过此步骤。"
     ;;
   *)
-    echo "日志文件清理完成！"
+    echo "无效选项，跳过清理日志文件。"
+    ;;
+esac
 
-# 最终提示
-echo "所有操作已完成！"
+echo "日志清理完成！"
+
+# 六、系统优化完成提示
+echo "系统优化完成！"
+
+echo "本次优化包括："
+echo "1) 更新了系统并安装了常用组件（如 sudo, wget, curl, fail2ban, ufw）。"
+echo "2) 启用了防火墙并配置了常用端口，特别是 SSH 服务端口。"
+echo "3) 启用了 Fail2Ban 防护，增强了系统安全性。"
+echo "4) 清理了系统垃圾文件和临时文件。"
+echo "5) 根据您的选择，已清理了不需要的系统日志文件。"
+
+echo "所有操作已完成，系统已经优化并增强了安全性！"
