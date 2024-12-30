@@ -301,43 +301,21 @@ else
   echo "无法设置时区，请检查时区是否正确。"
   exit 1
 fi
-
-# 检测当前 SWAP 配置
-echo "正在检查当前的 SWAP 配置..."
+# 检测当前的 SWAP 配置
+echo "正在检测当前的内存和 SWAP 配置..."
 
 # 使用 swapon -s 方法检查
 swap_info=$(swapon -s)
-swap_detected="false"
-
-if [ -z "$swap_info" ]; then
-  swap_info=""
-else
-  swap_detected="true"
-  echo "方法一 (swapon -s) 检测到 SWAP 配置如下："
-  echo "$swap_info"
-fi
 
 # 使用 free 命令检查
 free_info=$(free -h | grep -i swap)
-if [ -z "$free_info" ]; then
-  free_info=""
-else
-  swap_detected="true"
-  echo "方法二 (free -h) 检测到 SWAP 配置如下："
-  echo "$free_info"
-fi
 
-# 如果检测到 SWAP，则输出详细信息
-if [ "$swap_detected" == "true" ]; then
-  # 获取 SWAP 总大小、已用、剩余
-  swap_size=$(echo "$free_info" | awk '{print $2}')
-  swap_used=$(echo "$free_info" | awk '{print $3}')
-  swap_free=$(echo "$free_info" | awk '{print $4}')
+# 如果 SWAP 已配置，则显示当前 SWAP 配置
+if [ -n "$swap_info" ] || [ -n "$free_info" ]; then
   echo "当前内存和 SWAP 配置："
   free -h
-  echo "当前 SWAP 配置：大小 $swap_size，已使用 $swap_used，剩余 $swap_free"
 else
-  # 如果没有配置 SWAP，给出提示
+  # 如果没有配置 SWAP，则显示无 SWAP
   echo "当前没有配置 SWAP 分区。"
   free -h
 fi
@@ -383,6 +361,7 @@ esac
 # 提示当前的内存和 SWAP 信息
 echo "当前的内存和 SWAP 配置："
 free -h
+
 # 提示按 Enter 键继续
 read -p "已显示当前的内存和 SWAP 配置，按 Enter 键继续..."
 
