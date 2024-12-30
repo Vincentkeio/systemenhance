@@ -247,39 +247,59 @@ echo "当前时区是：$(timedatectl show --property=Timezone --value)"
 
 # 显示时区选择菜单
 echo "请选择要设置的时区："
-echo "1) 上海 (东八区)"
-echo "2) 北京 (东八区)"
-echo "3) 纽约 (东五区)"
-echo "4) 洛杉矶 (西八区)"
-echo "5) 伦敦 (零时区)"
-echo "6) 维持当前时区"
+echo "1) 上海 (东八区, UTC+8)"
+echo "2) 纽约 (美国东部时区, UTC-5)"
+echo "3) 洛杉矶 (美国西部时区, UTC-8)"
+echo "4) 伦敦 (零时区, UTC+0)"
+echo "5) 悉尼 (东十区, UTC+10)"
+echo "6) 东京 (东九区, UTC+9)"
+echo "7) 巴黎 (欧洲中部时区, UTC+1)"
+echo "8) 墨尔本 (澳大利亚东部时区, UTC+10)"
+echo "9) 北京 (东八区, UTC+8)"
+echo "10) 维持当前时区"
 
 # 获取用户输入
-read -p "请输入选项 (1/2/3/4/5/6): " timezone_choice
+read -p "请输入选项 (1/2/3/4/5/6/7/8/9/10): " timezone_choice
 
 # 根据用户选择设置时区
 case $timezone_choice in
   1)
-    echo "正在设置时区为 上海 (东八区)..."
+    echo "正在设置时区为 上海 (东八区, UTC+8)..."
     sudo timedatectl set-timezone Asia/Shanghai
     ;;
   2)
-    echo "正在设置时区为 北京 (东八区)..."
-    sudo timedatectl set-timezone Asia/Shanghai
-    ;;
-  3)
-    echo "正在设置时区为 纽约 (东五区)..."
+    echo "正在设置时区为 纽约 (美国东部时区, UTC-5)..."
     sudo timedatectl set-timezone America/New_York
     ;;
-  4)
-    echo "正在设置时区为 洛杉矶 (西八区)..."
+  3)
+    echo "正在设置时区为 洛杉矶 (美国西部时区, UTC-8)..."
     sudo timedatectl set-timezone America/Los_Angeles
     ;;
-  5)
-    echo "正在设置时区为 伦敦 (零时区)..."
+  4)
+    echo "正在设置时区为 伦敦 (零时区, UTC+0)..."
     sudo timedatectl set-timezone Europe/London
     ;;
+  5)
+    echo "正在设置时区为 悉尼 (东十区, UTC+10)..."
+    sudo timedatectl set-timezone Australia/Sydney
+    ;;
   6)
+    echo "正在设置时区为 东京 (东九区, UTC+9)..."
+    sudo timedatectl set-timezone Asia/Tokyo
+    ;;
+  7)
+    echo "正在设置时区为 巴黎 (欧洲中部时区, UTC+1)..."
+    sudo timedatectl set-timezone Europe/Paris
+    ;;
+  8)
+    echo "正在设置时区为 墨尔本 (澳大利亚东部时区, UTC+10)..."
+    sudo timedatectl set-timezone Australia/Melbourne
+    ;;
+  9)
+    echo "正在设置时区为 北京 (东八区, UTC+8)..."
+    sudo timedatectl set-timezone Asia/Shanghai
+    ;;
+  10)
     echo "您选择维持当前时区，脚本将继续执行。"
     ;;
   *)
