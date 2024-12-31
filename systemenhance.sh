@@ -144,7 +144,7 @@ fi
 
 echo "常用组件安装完成。"
 
-#IPV4/IPV6网络设置
+# IPV4/IPV6网络设置
 
 # 检测并设置网络优先级的功能模块
 check_and_set_network_priority() {
