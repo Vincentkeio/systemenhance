@@ -146,9 +146,12 @@ echo "常用组件安装完成。"
 
 # IPV4/IPV6网络设置
 
+#!/bin/bash
+
+
+
 # 检测并设置网络优先级的功能模块
 check_and_set_network_priority() {
-    # 输出开始信息
     echo "现在开始IPv4/IPv6网络配置"
 
     # 检测本机的IPv4和IPv6地址
@@ -304,6 +307,7 @@ enable_warp_for_dual_stack() {
 
 # 调用功能模块并捕获错误
 {
+    echo "开始执行网络配置..."
     check_and_set_network_priority
     enable_warp_for_dual_stack
 } || {
@@ -313,6 +317,7 @@ enable_warp_for_dual_stack() {
 # 后续大脚本的其他内容
 echo "继续执行后续脚本..."
 # 这里可以继续编写大脚本的其他部分
+
 
 
 #SSH端口修改
