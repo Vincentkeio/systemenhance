@@ -152,9 +152,11 @@ echo "常用组件安装完成。"
 check_and_set_network_priority() {
     echo "现在开始IPv4/IPv6网络配置"
 
-    # 检测本机的IPv4和IPv6地址
+    # 获取本机IPv4地址
     ipv4_address=$(hostname -I | awk '{print $1}')
-    ipv6_address=$(hostname -I | awk '{print $2}')
+    
+    # 获取本机IPv6地址，通过 ip addr show 来获取
+    ipv6_address=$(ip -6 addr show | grep "inet6" | grep -v "fe80" | awk '{print $2}' | head -n 1)
 
     # 显示IPv4和IPv6地址，或提示没有该地址
     if [ -z "$ipv4_address" ]; then
