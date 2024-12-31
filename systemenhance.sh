@@ -144,8 +144,6 @@ fi
 
 echo "常用组件安装完成。"
 
-# IPV4/IPV6网络设置
-
 #!/bin/bash
 
 # 检测并设置网络优先级的功能模块
@@ -155,8 +153,8 @@ check_and_set_network_priority() {
     # 获取本机IPv4地址
     ipv4_address=$(hostname -I | awk '{print $1}')
     
-    # 获取本机IPv6地址，通过 ip addr show 来获取
-    ipv6_address=$(ip -6 addr show | grep "inet6" | grep -v "fe80" | awk '{print $2}' | head -n 1)
+    # 获取本机IPv6地址，过滤掉链路本地地址 (::1/128)
+    ipv6_address=$(ip -6 addr show | grep "inet6" | grep -v "fe80" | grep -v "::1" | awk '{print $2}' | head -n 1)
 
     # 显示IPv4和IPv6地址，或提示没有该地址
     if [ -z "$ipv4_address" ]; then
@@ -169,6 +167,16 @@ check_and_set_network_priority() {
         echo "本机无IPv6地址"
     else
         echo "本机IPv6地址: $ipv6_address"
+    fi
+
+    # 判断IPv6是否有效，可以通过访问IPv6网站来验证
+    echo "正在验证IPv6可用性..."
+    if ping6 -c 1 ipv6.google.com &>/dev/null; then
+        echo "IPv6可用，已成功连接到IPv6网络。"
+        ipv6_valid=true
+    else
+        echo "IPv6不可用，无法连接到IPv6网络。"
+        ipv6_valid=false
     fi
 
     # 检测当前优先级设置
@@ -188,7 +196,7 @@ check_and_set_network_priority() {
     fi
 
     # 如果是双栈模式，提供选择优先级的选项
-    if [ -n "$ipv4_address" ] && [ -n "$ipv6_address" ]; then
+    if [ -n "$ipv4_address" ] && [ -n "$ipv6_address" ] && [ "$ipv6_valid" == true ]; then
         echo "本机为双栈模式，您可以选择优先使用IPv4或IPv6。"
         echo "请选择优先使用的协议："
         select choice in "IPv4优先" "IPv6优先" "取消"; do
@@ -223,104 +231,16 @@ check_and_set_network_priority() {
             esac
         done
     else
-        # 如果本机不是双栈，提示是否安装WARP
-        echo "您的本机不是双栈模式（没有IPv4和IPv6同时存在）。"
-        echo "您可以选择安装WARP来实现双栈访问外部网站。"
-        read -p "是否安装WARP？（y/n）" warp_choice
-        case $warp_choice in
-            [Yy]*)
-                echo "正在安装WARP..."
-
-                # 安装依赖项
-                sudo apt update
-                sudo apt install -y wireguard curl
-
-                # 下载并安装 WARP
-                curl -fsSL https://warp.cloudflare.com | sudo bash
-
-                # 启动 WARP
-                echo "WARP安装完成，正在启动..."
-                sudo systemctl enable wg-quick@wg0
-                sudo systemctl start wg-quick@wg0
-
-                # 检查 WARP 状态
-                sudo systemctl status wg-quick@wg0
-
-                # 检查连接
-                if sudo wg show wg0; then
-                    echo "WARP 已成功连接，您现在可以通过双栈访问外部网站。"
-                else
-                    echo "WARP 连接失败，请检查网络配置。"
-                fi
-                ;;
-            [Nn]*)
-                echo "您选择了不安装WARP。"
-                ;;
-            *)
-                echo "无效选择。"
-                ;;
-        esac
-    fi
-}
-
-# 启用WARP时，提供选择是启用双栈均通过WARP访问，还是仅启用缺失部分
-enable_warp_for_dual_stack() {
-    echo "现在开始配置 WARP 的使用方式"
-
-    # 判断本机的IPv4和IPv6情况
-    if [ -n "$ipv4_address" ] && [ -n "$ipv6_address" ]; then
-        echo "您的本机支持IPv4和IPv6地址。"
-        echo "请选择 WARP 配置方式："
-        select warp_choice in "双栈均使用WARP" "仅在缺失部分使用WARP" "取消"; do
-            case $warp_choice in
-                "双栈均使用WARP")
-                    echo "您选择了双栈均使用WARP。"
-                    # 启用WARP并配置双栈使用
-                    sudo wg-quick up wg0
-                    echo "双栈均已启用WARP访问外网。"
-                    break
-                    ;;
-                "仅在缺失部分使用WARP")
-                    echo "您选择了仅在缺失部分使用WARP。"
-
-                    # 检查本机是否已启用IPv4或IPv6
-                    if [ -z "$ipv4_address" ]; then
-                        echo "本机缺少IPv4地址，使用WARP进行IPv4访问..."
-                        sudo wg-quick up wg0
-                    fi
-
-                    if [ -z "$ipv6_address" ]; then
-                        echo "本机缺少IPv6地址，使用WARP进行IPv6访问..."
-                        sudo wg-quick up wg0
-                    fi
-                    break
-                    ;;
-                "取消")
-                    echo "您选择了取消。"
-                    break
-                    ;;
-                *)
-                    echo "无效选择，请重新选择。"
-                    ;;
-            esac
-        done
-    else
-        echo "您的本机不支持双栈，WARP将仅启用在缺少的部分。"
-        sudo wg-quick up wg0
+        echo "本机不是双栈模式，IPv6不可用。"
     fi
 }
 
 # 调用功能模块
-{
-    echo "开始执行网络配置..."
-    check_and_set_network_priority
-    enable_warp_for_dual_stack
-} || {
-    echo "网络配置模块发生错误，但不会中断后续脚本执行。"
-}
+check_and_set_network_priority
 
 # 后续大脚本的其他内容
 echo "继续执行后续脚本..."
+
 
 
 
