@@ -449,8 +449,17 @@ check_bbr() {
     return $?
 }
 
-# 启用 BBR
-enable_bbr() {
+# 显示当前的 BBR 配置和加速方案
+show_bbr_info() {
+    # 显示当前的 TCP 拥塞控制算法
+    echo "当前系统的 TCP 拥塞控制算法: $(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}')"
+    
+    # 显示当前的默认队列调度器
+    echo "当前系统的默认队列调度器: $(sysctl net.core.default_qdisc | awk '{print $3}')"
+}
+
+# 启用 BBR+FQ
+enable_bbr_fq() {
     echo "正在启用 BBR 和 BBR+FQ 加速方案..."
 
     # 启用 BBR
@@ -479,19 +488,38 @@ enable_bbr() {
 # 主程序
 echo "检测是否启用 BBR 加速..."
 
-# 检查是否已启用 BBR
+# 检查 BBR 是否已经启用
 check_bbr
 if [ $? -eq 0 ]; then
-    echo "BBR 已启用，当前使用的拥塞控制算法是：$(sysctl net.ipv4.tcp_congestion_control)"
+    echo "BBR 已启用，当前配置如下："
+    show_bbr_info
+    echo "BBR 已经启用，跳过启用过程，继续执行脚本的其他部分..."
 else
-    echo "BBR 未启用。"
-    read -p "是否启用 BBR 加速方案？(y/n): " choice
-    if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-        enable_bbr
+    # 显示当前 BBR 配置和加速方案
+    show_bbr_info
+
+    # 询问用户是否启用 BBR+FQ
+    echo "BBR 未启用，您可以选择启用 BBR+FQ 加速方案："
+    echo "1. 启用 BBR+FQ"
+    echo "2. 不启用，跳过"
+    read -p "请输入您的选择 (1 或 2): " choice
+
+    if [[ "$choice" == "1" ]]; then
+        # 用户选择启用 BBR+FQ
+        enable_bbr_fq
+        echo "BBR+FQ 已启用，您需要重启系统才能生效。"
+        echo "请通过运行 'sudo reboot' 命令重启系统，或者稍后手动重启。"
+    elif [[ "$choice" == "2" ]]; then
+        # 用户选择不启用
+        echo "维持当前配置，跳过 BBR 加速启用部分，继续执行脚本的其他部分。"
     else
-        echo "已取消启用 BBR。"
+        echo "无效的选择，跳过此部分。"
     fi
 fi
+
+# 继续执行脚本的后续部分...
+echo "继续执行脚本的其他部分..."
+
 
 # 六、系统优化完成提示
 echo "系统优化完成！"
