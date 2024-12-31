@@ -174,42 +174,48 @@ configure_ssh_port() {
 
   echo "当前SSH端口为: $current_port"
 
-  # 提示用户输入新的SSH端口
-  read -p "请输入新的SSH端口号 (1-65535): " new_port
+  # 询问用户是否需要修改SSH端口
+  read -p "是否需要修改SSH端口？(y/n): " modify_choice
+  if [[ "$modify_choice" == "y" || "$modify_choice" == "Y" ]]; then
+    # 提示用户输入新的SSH端口
+    read -p "请输入新的SSH端口号 (1-65535): " new_port
 
-  # 验证端口号是否有效
-  if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1 ] || [ "$new_port" -gt 65535 ]; then
-    echo "错误：请输入一个有效的端口号（1-65535）！"
-    return  # 跳过当前功能块，继续执行后续部分
-  fi
-
-  # 修改sshd_config文件
-  ssh_config_file="/etc/ssh/sshd_config"
-  if [ -f "$ssh_config_file" ]; then
-    # 备份配置文件
-    cp "$ssh_config_file" "${ssh_config_file}.bak"
-
-    # 更新端口配置
-    if grep -qE "^#?Port " "$ssh_config_file"; then
-      sed -i "s/^#\?Port .*/Port $new_port/" "$ssh_config_file"
-    else
-      echo "Port $new_port" >> "$ssh_config_file"
+    # 验证端口号是否有效
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1 ] || [ "$new_port" -gt 65535 ]; then
+      echo "错误：请输入一个有效的端口号（1-65535）！"
+      return  # 跳过当前功能块，继续执行后续部分
     fi
 
-    echo "SSH 配置已更新，新的端口号为: $new_port"
-  else
-    echo "错误：找不到SSH配置文件 $ssh_config_file"
-    return  # 跳过当前功能块，继续执行后续部分
-  fi
+    # 修改sshd_config文件
+    ssh_config_file="/etc/ssh/sshd_config"
+    if [ -f "$ssh_config_file" ]; then
+      # 备份配置文件
+      cp "$ssh_config_file" "${ssh_config_file}.bak"
 
-  # 检查修改后的配置是否生效
-  current_port_in_ssh_config=$(grep "^Port " "$ssh_config_file" | awk '{print $2}')
-  
-  if [ "$current_port_in_ssh_config" -eq "$new_port" ]; then
-    echo "SSH端口修改成功，新端口为 $new_port"
+      # 更新端口配置
+      if grep -qE "^#?Port " "$ssh_config_file"; then
+        sed -i "s/^#\?Port .*/Port $new_port/" "$ssh_config_file"
+      else
+        echo "Port $new_port" >> "$ssh_config_file"
+      fi
+
+      echo "SSH 配置已更新，新的端口号为: $new_port"
+    else
+      echo "错误：找不到SSH配置文件 $ssh_config_file"
+      return  # 跳过当前功能块，继续执行后续部分
+    fi
+
+    # 检查修改后的配置是否生效
+    current_port_in_ssh_config=$(grep "^Port " "$ssh_config_file" | awk '{print $2}')
+    
+    if [ "$current_port_in_ssh_config" -eq "$new_port" ]; then
+      echo "SSH端口修改成功，新端口为 $new_port"
+    else
+      echo "错误：SSH端口修改失败，请检查配置。"
+      return  # 跳过当前功能块，继续执行后续部分
+    fi
   else
-    echo "错误：SSH端口修改失败，请检查配置。"
-    return  # 跳过当前功能块，继续执行后续部分
+    echo "跳过SSH端口修改，继续执行其他任务。"
   fi
 
   # 检查SSH服务是否已正常启用
