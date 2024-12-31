@@ -178,7 +178,7 @@ configure_ssh_port() {
   # 验证端口号是否有效
   if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1 ] || [ "$new_port" -gt 65535 ]; then
     echo "错误：请输入一个有效的端口号（1-65535）！"
-    return 1  # 跳过当前功能块，继续执行后续部分
+    return  # 使用 return 跳过当前函数，继续执行后续部分
   fi
 
   # 修改sshd_config文件
@@ -197,7 +197,7 @@ configure_ssh_port() {
     echo "SSH 配置已更新，新的端口号为: $new_port"
   else
     echo "错误：找不到SSH配置文件 $ssh_config_file"
-    return 1  # 跳过当前功能块，继续执行后续部分
+    return  # 使用 return 跳过当前函数，继续执行后续部分
   fi
 
   # 检查修改后的配置是否生效
@@ -260,7 +260,7 @@ install_ssh() {
     fi
   else
     echo "无法识别的操作系统：$os_type，无法处理 SSH 服务。"
-    return 1  # 跳过当前功能块，继续执行后续部分
+    exit 1  # 使用 exit 退出脚本
   fi
 }
 
@@ -324,7 +324,7 @@ if ! ss -tuln | grep -q $new_port; then
   # 如果修复后端口仍未开放，输出错误信息并退出
   if ! ss -tuln | grep -q $new_port; then
     echo "错误：修复后新端口 $new_port 仍未成功开放，请检查配置。"
-    return 1  # 跳过当前功能块，继续执行后续部分
+    exit 1  # 使用 exit 退出脚本，避免继续执行
   fi
 fi
 
