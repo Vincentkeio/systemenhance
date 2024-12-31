@@ -441,6 +441,58 @@ esac
 
 echo "日志清理完成！"
 
+#!/bin/bash
+
+# 检查是否已启用 BBR
+check_bbr() {
+    sysctl net.ipv4.tcp_congestion_control | grep -q 'bbr'
+    return $?
+}
+
+# 启用 BBR
+enable_bbr() {
+    echo "正在启用 BBR 和 BBR+FQ 加速方案..."
+
+    # 启用 BBR
+    sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
+
+    # 永久启用 BBR（在 /etc/sysctl.conf 中添加配置）
+    if ! grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.conf; then
+        echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf
+    fi
+
+    # 启用 FQ（FQ是BBR的配套方案）
+    sudo sysctl -w net.ipv4.tcp_default_congestion_control=bbr
+    sudo sysctl -w net.core.default_qdisc=fq
+
+    # 永久启用 FQ
+    if ! grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf; then
+        echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf
+    fi
+
+    # 重新加载 sysctl 配置
+    sudo sysctl -p
+
+    echo "BBR 和 BBR+FQ 已成功启用！"
+}
+
+# 主程序
+echo "检测是否启用 BBR 加速..."
+
+# 检查是否已启用 BBR
+check_bbr
+if [ $? -eq 0 ]; then
+    echo "BBR 已启用，当前使用的拥塞控制算法是：$(sysctl net.ipv4.tcp_congestion_control)"
+else
+    echo "BBR 未启用。"
+    read -p "是否启用 BBR 加速方案？(y/n): " choice
+    if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
+        enable_bbr
+    else
+        echo "已取消启用 BBR。"
+    fi
+fi
+
 # 六、系统优化完成提示
 echo "系统优化完成！"
 
@@ -450,7 +502,8 @@ echo "2) 启用了防火墙并配置了常用端口，特别是 SSH 服务端口
 echo "3) 启用了 Fail2Ban 防护，增强了系统安全性。"
 echo "4) 清理了系统垃圾文件和临时文件。"
 echo "5) 根据您的选择，已清理了不需要的系统日志文件。"
-echo "6) 根据您的选择，已调整系统时区设置。"
-echo "7) 根据您的选择，已调整或配置了 SWAP 大小。"
+echo "6) 根据您的选择，已设置BBR。"
+echo "7) 根据您的选择，已调整系统时区设置。"
+echo "8) 根据您的选择，已调整或配置了 SWAP 大小。"
 
 echo "所有操作已完成，系统已经优化并增强了安全性！"
