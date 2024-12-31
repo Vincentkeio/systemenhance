@@ -144,13 +144,7 @@ fi
 
 echo "常用组件安装完成。"
 
-#IPV4/IPV6网络设置
-
-
-
-
-
-#SSH端口功能
+#!/bin/bash
 
 # 检查SSH服务是否安装并运行
 check_ssh_service() {
