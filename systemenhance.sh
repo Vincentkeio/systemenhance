@@ -148,6 +148,8 @@ echo "常用组件安装完成。"
 
 # 检查SSH服务是否安装并运行
 check_ssh_service() {
+  echo "现在开始检测SSH端口..."
+
   if ! systemctl is-active --quiet ssh && ! systemctl is-active --quiet sshd; then
     echo "未检测到SSH服务。"
     read -p "是否需要启动并设置SSH服务并更改端口号（y/n）？" choice
@@ -282,27 +284,6 @@ restart_ssh() {
   fi
 }
 
-# 尝试重启 SSH 服务，最多重试 5 次
-attempt=1
-max_attempts=5
-while ! systemctl is-active --quiet ssh && [ $attempt -le $max_attempts ]; do
-  echo "尝试重启 SSH 服务，尝试次数: $attempt/$max_attempts"
-  restart_ssh
-  attempt=$((attempt + 1))
-  sleep 2
-done
-
-# 如果 SSH 服务仍然无法启动，重新安装 SSH 服务并重试
-if ! systemctl is-active --quiet ssh && ! systemctl is-active --quiet sshd; then
-  echo "错误：SSH 服务无法启动，正在重新安装 SSH 服务..."
-  install_ssh
-  restart_ssh
-fi
-
-# 确保重启服务后，检查新的 SSH 配置是否生效
-echo "重启后的 SSH 配置："
-ss -tuln | grep $new_port  # 检查新的端口是否开放
-
 # 如果端口未开放，立即修复
 if ! ss -tuln | grep -q $new_port; then
   echo "错误：新端口 $new_port 未成功开放，执行修复步骤..."
@@ -317,14 +298,14 @@ if ! ss -tuln | grep -q $new_port; then
   echo "执行 systemctl restart ssh..."
   sudo systemctl restart ssh
 
-  # 再次检查新端口是否开放
+  # 再次检查新端口是否生效
   echo "检查新端口是否生效..."
   ss -tuln | grep $new_port
 
-  # 如果修复后端口仍未开放，输出错误信息并退出
+  # 如果修复后端口仍未开放，跳过当前功能块
   if ! ss -tuln | grep -q $new_port; then
-    echo "错误：修复后新端口 $new_port 仍未成功开放，请检查配置。"
-    exit 1  # 使用 exit 退出脚本，避免继续执行
+    echo "警告：修复后新端口 $new_port 仍未成功开放，跳过该功能块，继续后续任务。"
+    return  # 跳过当前功能块，继续执行后续部分
   fi
 fi
 
@@ -332,7 +313,6 @@ echo "操作完成！"
 
 # 调用检查SSH服务函数
 check_ssh_service
-
 
 
 # 三、启用防火墙和 fail2ban
