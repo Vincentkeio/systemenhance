@@ -73,8 +73,7 @@ get_system_info() {
     # 9. 如果没有获取到系统信息，退出
     if [[ -z "$SYSTEM_NAME" || -z "$SYSTEM_CODENAME" || -z "$SYSTEM_VERSION" ]]; then
         echo "无法获取系统信息"
-        exit 1
-    fi
+        fi
 }
 
 # 获取系统信息
