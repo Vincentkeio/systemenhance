@@ -143,7 +143,6 @@ else
 fi
 
 echo "常用组件安装完成。"
-
 #!/bin/bash
 
 # 检查SSH服务是否安装并运行
@@ -262,7 +261,7 @@ install_ssh() {
     fi
   else
     echo "无法识别的操作系统：$os_type，无法处理 SSH 服务。"
-    exit 1  # 使用 exit 退出脚本
+    return  # 跳过当前功能块，继续执行后续部分
   fi
 }
 
@@ -302,10 +301,9 @@ if ! ss -tuln | grep -q $new_port; then
   echo "检查新端口是否生效..."
   ss -tuln | grep $new_port
 
-  # 如果修复后端口仍未开放，跳过当前功能块
+  # 即使修复失败，也只提示，不退出，跳过当前功能块
   if ! ss -tuln | grep -q $new_port; then
     echo "警告：修复后新端口 $new_port 仍未成功开放，跳过该功能块，继续后续任务。"
-    return  # 跳过当前功能块，继续执行后续部分
   fi
 fi
 
