@@ -178,7 +178,7 @@ configure_ssh_port() {
   # 验证端口号是否有效
   if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1 ] || [ "$new_port" -gt 65535 ]; then
     echo "错误：请输入一个有效的端口号（1-65535）！"
-    return  # 使用 return 跳过当前函数，继续执行后续部分
+    return 0  # 跳过当前功能块，继续执行后续部分
   fi
 
   # 修改sshd_config文件
@@ -197,7 +197,7 @@ configure_ssh_port() {
     echo "SSH 配置已更新，新的端口号为: $new_port"
   else
     echo "错误：找不到SSH配置文件 $ssh_config_file"
-    return  # 使用 return 跳过当前函数，继续执行后续部分
+    return 0  # 跳过当前功能块，继续执行后续部分
   fi
 
   # 检查修改后的配置是否生效
