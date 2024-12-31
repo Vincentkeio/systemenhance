@@ -148,7 +148,8 @@ echo "常用组件安装完成。"
 
 #!/bin/bash
 
-
+# 开启调试模式，输出每一行执行的命令
+set -x
 
 # 检测并设置网络优先级的功能模块
 check_and_set_network_priority() {
@@ -317,6 +318,7 @@ enable_warp_for_dual_stack() {
 # 后续大脚本的其他内容
 echo "继续执行后续脚本..."
 # 这里可以继续编写大脚本的其他部分
+
 
 
 
