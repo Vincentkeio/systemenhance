@@ -12,3 +12,5 @@
 使用方法：运行一键命令  
 `wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/systemenhance/refs/heads/main/systemenhance.sh && sudo chmod +x /tmp/systemenhance.sh && sudo bash /tmp/systemenhance.sh`
 
+注：小白如果出现没有sudo的情况，可以把命令里的两个sudo删掉再运行，如下：  
+`wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/systemenhance/refs/heads/main/systemenhance.sh && chmod +x /tmp/systemenhance.sh && bash /tmp/systemenhance.sh`
