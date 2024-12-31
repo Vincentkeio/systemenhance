@@ -88,8 +88,8 @@ echo "系统架构: $SYSTEM_ARCH"
 
 # 二、更新系统
 echo "正在更新系统..."
-if command -v apt-get &> /dev/null; then
-  apt-get update && apt-get upgrade -y
+if command -v apt &> /dev/null; then
+  apt update && apt upgrade -y
 elif command -v yum &> /dev/null; then
   yum update -y
 else
@@ -105,7 +105,7 @@ echo "正在检查并安装常用组件：sudo, wget, curl, fail2ban, ufw..."
 # 检查并安装 sudo
 if ! command -v sudo &> /dev/null; then
   echo "未检测到 sudo，正在安装..."
-  apt-get install -y sudo || yum install -y sudo
+  apt install -y sudo || yum install -y sudo
 else
   echo "sudo 已安装"
 fi
@@ -113,7 +113,7 @@ fi
 # 检查并安装 wget
 if ! command -v wget &> /dev/null; then
   echo "未检测到 wget，正在安装..."
-  apt-get install -y wget || yum install -y wget
+  apt install -y wget || yum install -y wget
 else
   echo "wget 已安装"
 fi
@@ -121,7 +121,7 @@ fi
 # 检查并安装 curl
 if ! command -v curl &> /dev/null; then
   echo "未检测到 curl，正在安装..."
-  apt-get install -y curl || yum install -y curl
+  apt install -y curl || yum install -y curl
 else
   echo "curl 已安装"
 fi
@@ -129,7 +129,7 @@ fi
 # 检查并安装 fail2ban
 if ! command -v fail2ban-client &> /dev/null; then
   echo "未检测到 fail2ban，正在安装..."
-  apt-get install -y fail2ban || yum install -y fail2ban
+  apt install -y fail2ban || yum install -y fail2ban
 else
   echo "fail2ban 已安装"
 fi
@@ -137,7 +137,7 @@ fi
 # 检查并安装 ufw
 if ! command -v ufw &> /dev/null; then
   echo "未检测到 ufw，正在安装..."
-  apt-get install -y ufw || yum install -y ufw
+  apt install -y ufw || yum install -y ufw
 else
   echo "ufw 已安装"
 fi
@@ -715,11 +715,11 @@ echo "继续执行脚本的其他部分..."
 echo "开始清理系统垃圾..."
 
 # 对于基于 Debian/Ubuntu 的系统，清理 apt 缓存
-if command -v apt-get &> /dev/null; then
+if command -v apt &> /dev/null; then
   echo "正在清理 APT 缓存..."
-  apt-get clean
-  apt-get autoclean
-  apt-get autoremove -y
+  apt clean
+  apt autoclean
+  apt autoremove -y
 fi
 
 # 对于基于 CentOS/RHEL 的系统，清理 YUM 缓存
