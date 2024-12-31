@@ -378,69 +378,6 @@ free -h
 # 提示按 Enter 键继续
 read -p "已显示当前的内存和 SWAP 配置，按 Enter 键继续..."
 
-
-# 四、清理系统垃圾
-echo "开始清理系统垃圾..."
-
-# 对于基于 Debian/Ubuntu 的系统，清理 apt 缓存
-if command -v apt-get &> /dev/null; then
-  echo "正在清理 APT 缓存..."
-  apt-get clean
-  apt-get autoclean
-  apt-get autoremove -y
-fi
-
-# 对于基于 CentOS/RHEL 的系统，清理 YUM 缓存
-if command -v yum &> /dev/null; then
-  echo "正在清理 YUM 缓存..."
-  yum clean all
-  yum autoremove -y
-fi
-
-# 清理临时文件
-echo "正在清理临时文件..."
-rm -rf /tmp/*
-rm -rf /var/tmp/*
-
-echo "系统垃圾清理完成！"
-
-# 五、清理日志文件（用户选择清理时间范围）
-echo "请选择要清理的日志文件时间范围："
-echo "1) 清除一周内的日志"
-echo "2) 清除一月内的日志"
-echo "3) 清除半年的日志"
-echo "4) 清除所有日志"
-echo "5) 不用清理"
-
-read -p "请输入选项 (1/2/3/4/5): " log_choice
-
-case $log_choice in
-  1)
-    echo "正在清除一周内的日志..."
-    find /var/log -type f -name '*.log' -mtime +7 -exec rm -f {} \;
-    ;;
-  2)
-    echo "正在清除一月内的日志..."
-    find /var/log -type f -name '*.log' -mtime +30 -exec rm -f {} \;
-    ;;
-  3)
-    echo "正在清除半年的日志..."
-    find /var/log -type f -name '*.log' -mtime +180 -exec rm -f {} \;
-    ;;
-  4)
-    echo "正在清除所有日志..."
-    find /var/log -type f -name '*.log' -exec rm -f {} \;
-    ;;
-  5)
-    echo "不清理日志文件，跳过此步骤。"
-    ;;
-  *)
-    echo "无效选项，跳过清理日志文件。"
-    ;;
-esac
-
-echo "日志清理完成！"
-
 #!/bin/bash
 
 # 检查是否已启用 BBR
@@ -520,6 +457,67 @@ fi
 # 继续执行脚本的后续部分...
 echo "继续执行脚本的其他部分..."
 
+# 四、清理系统垃圾
+echo "开始清理系统垃圾..."
+
+# 对于基于 Debian/Ubuntu 的系统，清理 apt 缓存
+if command -v apt-get &> /dev/null; then
+  echo "正在清理 APT 缓存..."
+  apt-get clean
+  apt-get autoclean
+  apt-get autoremove -y
+fi
+
+# 对于基于 CentOS/RHEL 的系统，清理 YUM 缓存
+if command -v yum &> /dev/null; then
+  echo "正在清理 YUM 缓存..."
+  yum clean all
+  yum autoremove -y
+fi
+
+# 清理临时文件
+echo "正在清理临时文件..."
+rm -rf /tmp/*
+rm -rf /var/tmp/*
+
+echo "系统垃圾清理完成！"
+
+# 五、清理日志文件（用户选择清理时间范围）
+echo "请选择要清理的日志文件时间范围："
+echo "1) 清除一周内的日志"
+echo "2) 清除一月内的日志"
+echo "3) 清除半年的日志"
+echo "4) 清除所有日志"
+echo "5) 不用清理"
+
+read -p "请输入选项 (1/2/3/4/5): " log_choice
+
+case $log_choice in
+  1)
+    echo "正在清除一周内的日志..."
+    find /var/log -type f -name '*.log' -mtime +7 -exec rm -f {} \;
+    ;;
+  2)
+    echo "正在清除一月内的日志..."
+    find /var/log -type f -name '*.log' -mtime +30 -exec rm -f {} \;
+    ;;
+  3)
+    echo "正在清除半年的日志..."
+    find /var/log -type f -name '*.log' -mtime +180 -exec rm -f {} \;
+    ;;
+  4)
+    echo "正在清除所有日志..."
+    find /var/log -type f -name '*.log' -exec rm -f {} \;
+    ;;
+  5)
+    echo "不清理日志文件，跳过此步骤。"
+    ;;
+  *)
+    echo "无效选项，跳过清理日志文件。"
+    ;;
+esac
+
+echo "日志清理完成！"
 
 # 六、系统优化完成提示
 echo "系统优化完成！"
@@ -528,10 +526,11 @@ echo "本次优化包括："
 echo "1) 更新了系统并安装了常用组件（如 sudo, wget, curl, fail2ban, ufw）。"
 echo "2) 启用了防火墙并配置了常用端口，特别是 SSH 服务端口。"
 echo "3) 启用了 Fail2Ban 防护，增强了系统安全性。"
-echo "4) 清理了系统垃圾文件和临时文件。"
-echo "5) 根据您的选择，已清理了不需要的系统日志文件。"
+echo "4) 根据您的选择，已调整系统时区设置。"
+echo "5) 根据您的选择，已调整或配置了 SWAP 大小。"
 echo "6) 根据您的选择，已设置BBR。"
-echo "7) 根据您的选择，已调整系统时区设置。"
-echo "8) 根据您的选择，已调整或配置了 SWAP 大小。"
+echo "7) 清理了系统垃圾文件和临时文件。"
+echo "8) 根据您的选择，已清理了不需要的系统日志文件。"
+
 
 echo "所有操作已完成，系统已经优化并增强了安全性！"
