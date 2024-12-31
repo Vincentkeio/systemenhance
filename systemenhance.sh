@@ -144,7 +144,6 @@ fi
 
 echo "常用组件安装完成。"
 
-# 修改SSH端口
 #!/bin/bash
 
 # 检查SSH服务是否安装并运行
@@ -182,14 +181,6 @@ configure_ssh_port() {
     return 1  # 跳过当前功能块，继续执行后续部分
   fi
 
-  # 获取当前SSH端口
-  current_port=$(grep -E "^#?Port " /etc/ssh/sshd_config | awk '{print $2}')
-  if [ -z "$current_port" ]; then
-    current_port=22 # 如果未设置Port，默认值为22
-  fi
-
-  echo "当前SSH端口为: $current_port"
-
   # 修改sshd_config文件
   ssh_config_file="/etc/ssh/sshd_config"
   if [ -f "$ssh_config_file" ]; then
@@ -214,6 +205,7 @@ configure_ssh_port() {
 
   # 开放新端口并关闭旧端口
   open_ports
+  restart_ssh
 }
 
 # 开放新端口并关闭旧端口
@@ -272,7 +264,7 @@ install_ssh() {
   fi
 }
 
-# 检查并重启SSH服务
+# 重启SSH服务
 restart_ssh() {
   echo "尝试重启 SSH 服务..."
 
