@@ -216,8 +216,8 @@ check_and_set_network_priority() {
                     ;;
             esac
         done
-    # 如果本机不是双栈，提示是否安装WARP
     else
+        # 如果本机不是双栈，提示是否安装WARP
         echo "您的本机不是双栈模式（没有IPv4和IPv6同时存在）。"
         echo "您可以选择安装WARP来实现双栈访问外部网站。"
         read -p "是否安装WARP？（y/n）" warp_choice
@@ -255,7 +255,7 @@ check_and_set_network_priority() {
                 ;;
         esac
     fi
-fi
+}
 
 # 启用WARP时，提供选择是启用双栈均通过WARP访问，还是仅启用缺失部分
 enable_warp_for_dual_stack() {
