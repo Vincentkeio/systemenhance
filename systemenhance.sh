@@ -143,6 +143,7 @@ else
 fi
 
 echo "常用组件安装完成。"
+
 #!/bin/bash
 
 # 检查SSH服务是否安装并运行
@@ -202,40 +203,85 @@ configure_ssh_port() {
   fi
 
   # 检查修改后的配置是否生效
-  grep "^Port " "$ssh_config_file"
+  current_port_in_ssh_config=$(grep "^Port " "$ssh_config_file" | awk '{print $2}')
+  
+  if [ "$current_port_in_ssh_config" -eq "$new_port" ]; then
+    echo "SSH端口修改成功，新端口为 $new_port"
+  else
+    echo "错误：SSH端口修改失败，请检查配置。"
+    return  # 跳过当前功能块，继续执行后续部分
+  fi
 
-  # 开放新端口并关闭旧端口
-  open_ports
-  restart_ssh
+  # 检查SSH服务是否已正常启用
+  if ! systemctl is-active --quiet ssh && ! systemctl is-active --quiet sshd; then
+    echo "警告：SSH服务未正常启用，无法继续检查新端口是否生效。"
+    return  # 跳过当前功能块，继续执行后续部分
+  else
+    echo "SSH服务已正常启用，继续检查新端口是否生效。"
+  fi
+
+  # 检查新端口是否在防火墙中开放
+  check_firewall
 }
 
-# 开放新端口并关闭旧端口
-open_ports() {
+# 检查防火墙并开放新端口
+check_firewall() {
   if command -v ufw >/dev/null 2>&1; then
-    # 确保ufw防火墙启用
+    # ufw防火墙启用检查
     if ! sudo ufw status | grep -q "Status: active"; then
-      echo "ufw防火墙未启用，正在启用ufw防火墙..."
-      sudo ufw enable
+      echo "防火墙未启用，且新端口未被防火墙阻拦。"
+    else
+      # 检查新端口是否已在防火墙规则中放行
+      if ! sudo ufw status | grep -q "$new_port/tcp"; then
+        sudo ufw allow $new_port/tcp
+        echo "防火墙已启用，新端口已添加放行规则。"
+      else
+        echo "新端口已开放，防火墙规则已放行该端口。"
+      fi
     fi
-    sudo ufw allow $new_port/tcp
-    echo "已开放新端口 $new_port"
-    sudo ufw delete allow $current_port/tcp || echo "警告：未找到旧端口 $current_port 的规则"
-    sudo ufw reload  # 确保防火墙规则生效
-    echo "已关闭旧端口 $current_port"
   elif command -v firewall-cmd >/dev/null 2>&1; then
-    # 检查firewalld防火墙状态
+    # firewalld防火墙启用检查
     if ! sudo systemctl is-active --quiet firewalld; then
-      echo "firewalld防火墙未启用，正在启动firewalld..."
-      sudo systemctl start firewalld
-      sudo systemctl enable firewalld
+      echo "防火墙未启用，且新端口未被防火墙阻拦。"
+    else
+      # 检查新端口是否已在防火墙规则中放行
+      if ! sudo firewall-cmd --list-all | grep -q "$new_port/tcp"; then
+        sudo firewall-cmd --permanent --add-port=$new_port/tcp
+        sudo firewall-cmd --reload
+        echo "防火墙已启用，新端口已添加放行规则。"
+      else
+        echo "新端口已开放，防火墙规则已放行该端口。"
+      fi
     fi
-    sudo firewall-cmd --permanent --add-port=$new_port/tcp
-    sudo firewall-cmd --permanent --remove-port=$current_port/tcp || echo "警告：未找到旧端口 $current_port 的规则"
-    sudo firewall-cmd --reload
-    echo "已开放新端口 $new_port"
-    echo "已关闭旧端口 $current_port"
   else
-    echo "警告：未检测到受支持的防火墙工具，请手动开放新端口 $new_port 并关闭旧端口 $current_port"
+    echo "警告：未检测到受支持的防火墙工具，请手动开放新端口 $new_port。"
+    echo "防火墙未启用，且新端口未被防火墙阻拦。"
+  fi
+
+  # 检查新端口是否成功开放
+  if ! ss -tuln | grep -q $new_port; then
+    echo "错误：新端口 $new_port 未成功开放，执行修复步骤..."
+    
+    # 执行修复步骤：重新加载配置并重启SSH服务
+    echo "执行 systemctl daemon-reload..."
+    sudo systemctl daemon-reload
+
+    echo "执行 /etc/init.d/ssh restart..."
+    sudo /etc/init.d/ssh restart
+
+    echo "执行 systemctl restart ssh..."
+    sudo systemctl restart ssh
+
+    # 再次检查新端口是否生效
+    echo "检查新端口是否生效..."
+    ss -tuln | grep $new_port
+
+    # 即使修复失败，也只提示，不退出，跳过当前功能块
+    if ! ss -tuln | grep -q $new_port; then
+      echo "警告：修复后新端口 $new_port 仍未成功开放，跳过该功能块，继续后续任务。"
+    fi
+  else
+    echo "新端口 $new_port 已成功开放。"
   fi
 }
 
@@ -264,50 +310,6 @@ install_ssh() {
     return  # 跳过当前功能块，继续执行后续部分
   fi
 }
-
-# 重启SSH服务
-restart_ssh() {
-  echo "尝试重启 SSH 服务..."
-
-  # 确保 systemd 加载新的配置
-  sudo systemctl daemon-reload
-  echo "已执行 systemctl daemon-reload"
-
-  # 对于 CentOS 和 RHEL，使用 sshd 服务
-  if [[ "$os_type" == "centos" || "$os_type" == "rhel" ]]; then
-    sudo systemctl restart sshd
-    echo "已执行 systemctl restart sshd"
-  else
-    sudo systemctl restart ssh
-    echo "已执行 systemctl restart ssh"
-  fi
-}
-
-# 如果端口未开放，立即修复
-if ! ss -tuln | grep -q $new_port; then
-  echo "错误：新端口 $new_port 未成功开放，执行修复步骤..."
-
-  # 执行修复步骤：重新加载配置并重启SSH服务
-  echo "执行 systemctl daemon-reload..."
-  sudo systemctl daemon-reload
-
-  echo "执行 /etc/init.d/ssh restart..."
-  sudo /etc/init.d/ssh restart
-
-  echo "执行 systemctl restart ssh..."
-  sudo systemctl restart ssh
-
-  # 再次检查新端口是否生效
-  echo "检查新端口是否生效..."
-  ss -tuln | grep $new_port
-
-  # 即使修复失败，也只提示，不退出，跳过当前功能块
-  if ! ss -tuln | grep -q $new_port; then
-    echo "警告：修复后新端口 $new_port 仍未成功开放，跳过该功能块，继续后续任务。"
-  fi
-fi
-
-echo "操作完成！"
 
 # 调用检查SSH服务函数
 check_ssh_service
