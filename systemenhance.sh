@@ -144,6 +144,8 @@ fi
 
 echo "常用组件安装完成。"
 
+# IPV4/IPV6检测
+
 #!/bin/bash
 
 # 检测并设置网络优先级的功能模块
@@ -179,6 +181,16 @@ check_and_set_network_priority() {
         ipv6_valid=false
     fi
 
+    # 判断IPv4是否有效，可以通过访问IPv4网站来验证
+    echo "正在验证IPv4可用性..."
+    if ping -c 1 google.com &>/dev/null; then
+        echo "IPv4可用，已成功连接到IPv4网络。"
+        ipv4_valid=true
+    else
+        echo "IPv4不可用，无法连接到IPv4网络。"
+        ipv4_valid=false
+    fi
+
     # 检测当前优先级设置
     if sysctl net.ipv6.conf.all.prefer_ipv4 &>/dev/null; then
         ipv4_preference=$(sysctl net.ipv6.conf.all.prefer_ipv4 | awk '{print $3}')
@@ -196,7 +208,7 @@ check_and_set_network_priority() {
     fi
 
     # 如果是双栈模式，提供选择优先级的选项
-    if [ -n "$ipv4_address" ] && [ -n "$ipv6_address" ] && [ "$ipv6_valid" == true ]; then
+    if [ -n "$ipv4_address" ] && [ -n "$ipv6_address" ] && [ "$ipv6_valid" == true ] && [ "$ipv4_valid" == true ]; then
         echo "本机为双栈模式，您可以选择优先使用IPv4或IPv6。"
         echo "请选择优先使用的协议："
         select choice in "IPv4优先" "IPv6优先" "取消"; do
@@ -231,7 +243,7 @@ check_and_set_network_priority() {
             esac
         done
     else
-        echo "本机不是双栈模式，IPv6不可用。"
+        echo "本机不是双栈模式，IPv6或IPv4不可用。"
     fi
 }
 
@@ -240,6 +252,7 @@ check_and_set_network_priority
 
 # 后续大脚本的其他内容
 echo "继续执行后续脚本..."
+
 
 
 
