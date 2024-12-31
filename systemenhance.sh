@@ -148,9 +148,6 @@ echo "常用组件安装完成。"
 
 #!/bin/bash
 
-# 开启调试模式，输出每一行执行的命令
-
-
 # 检测并设置网络优先级的功能模块
 check_and_set_network_priority() {
     echo "现在开始IPv4/IPv6网络配置"
@@ -173,15 +170,20 @@ check_and_set_network_priority() {
     fi
 
     # 检测当前优先级设置
-    ipv4_preference=$(sysctl net.ipv6.conf.all.prefer_ipv4 | awk '{print $3}')
-    if [ "$ipv4_preference" == "1" ]; then
-        current_preference="IPv4优先"
-    elif [ "$ipv4_preference" == "0" ]; then
-        current_preference="IPv6优先"
+    if sysctl net.ipv6.conf.all.prefer_ipv4 &>/dev/null; then
+        ipv4_preference=$(sysctl net.ipv6.conf.all.prefer_ipv4 | awk '{print $3}')
+        if [ "$ipv4_preference" == "1" ]; then
+            current_preference="IPv4优先"
+        elif [ "$ipv4_preference" == "0" ]; then
+            current_preference="IPv6优先"
+        else
+            current_preference="未配置"
+        fi
+        echo "当前系统的优先级设置是: $current_preference"
     else
+        echo "未找到 prefer_ipv4 配置项，默认未配置优先级"
         current_preference="未配置"
     fi
-    echo "当前系统的优先级设置是: $current_preference"
 
     # 如果是双栈模式，提供选择优先级的选项
     if [ -n "$ipv4_address" ] && [ -n "$ipv6_address" ]; then
@@ -306,7 +308,7 @@ enable_warp_for_dual_stack() {
     fi
 }
 
-# 调用功能模块并捕获错误
+# 调用功能模块
 {
     echo "开始执行网络配置..."
     check_and_set_network_priority
@@ -317,8 +319,6 @@ enable_warp_for_dual_stack() {
 
 # 后续大脚本的其他内容
 echo "继续执行后续脚本..."
-# 这里可以继续编写大脚本的其他部分
-
 
 
 
