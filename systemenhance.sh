@@ -144,8 +144,6 @@ fi
 
 echo "常用组件安装完成。"
 
-# IPV4/IPV6检测
-
 #!/bin/bash
 
 # 检测并设置网络优先级的功能模块
@@ -153,10 +151,10 @@ check_and_set_network_priority() {
     echo "现在开始IPv4/IPv6网络配置"
 
     # 获取本机IPv4地址
-    ipv4_address=$(hostname -I | awk '{print $1}')
+    ipv4_address=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
     
-    # 获取本机IPv6地址，过滤掉链路本地地址 (::1/128)
-    ipv6_address=$(ip -6 addr show | grep "inet6" | grep -v "fe80" | grep -v "::1" | awk '{print $2}' | head -n 1)
+    # 获取本机IPv6地址，过滤掉链路本地地址 (::1/128 和 fe80::)
+    ipv6_address=$(ip -6 addr show | grep -oP '(?<=inet6\s)[0-9a-f:]+(?=/)' | grep -vE '^fe80|^::1' | head -n 1)
 
     # 显示IPv4和IPv6地址，或提示没有该地址
     if [ -z "$ipv4_address" ]; then
@@ -183,7 +181,7 @@ check_and_set_network_priority() {
 
     # 判断IPv4是否有效，可以通过访问IPv4网站来验证
     echo "正在验证IPv4可用性..."
-    if ping -c 1 google.com &>/dev/null; then
+    if ping -4 -c 1 google.com &>/dev/null; then
         echo "IPv4可用，已成功连接到IPv4网络。"
         ipv4_valid=true
     else
@@ -197,14 +195,21 @@ check_and_set_network_priority() {
         if [ "$ipv4_preference" == "1" ]; then
             current_preference="IPv4优先"
         elif [ "$ipv4_preference" == "0" ]; then
-            current_preference="IPv6优先"
+            if [ "$ipv4_valid" == false ] && [ "$ipv6_valid" == true ]; then
+                echo "检测到本机为IPv6 only网络环境。"
+                current_preference="IPv6优先"
+            else
+                current_preference="IPv6优先"
+            fi
         else
             current_preference="未配置"
         fi
         echo "当前系统的优先级设置是: $current_preference"
     else
+        if [ "$ipv4_valid" == false ] && [ "$ipv6_valid" == true ]; then
+            echo "检测到本机为IPv6 only网络环境。"
+        fi
         echo "未找到 prefer_ipv4 配置项，默认未配置优先级"
-        current_preference="未配置"
     fi
 
     # 如果是双栈模式，提供选择优先级的选项
@@ -243,7 +248,13 @@ check_and_set_network_priority() {
             esac
         done
     else
-        echo "本机不是双栈模式，IPv6或IPv4不可用。"
+        if [ "$ipv4_valid" == false ] && [ "$ipv6_valid" == true ]; then
+            echo "本机为IPv6 only模式，IPv4不可用。"
+        elif [ "$ipv6_valid" == false ] && [ "$ipv4_valid" == true ]; then
+            echo "本机为IPv4 only模式，IPv6不可用。"
+        else
+            echo "本机既不可用IPv4，也不可用IPv6，请检查网络配置。"
+        fi
     fi
 }
 
@@ -252,6 +263,7 @@ check_and_set_network_priority
 
 # 后续大脚本的其他内容
 echo "继续执行后续脚本..."
+
 
 
 
