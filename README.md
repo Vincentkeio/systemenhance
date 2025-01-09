@@ -1,10 +1,7 @@
 # systemenhance
-
-## 系统优化脚本
+系统优化脚本
 
 **systemenhance** 是一个旨在帮助用户快速优化和配置系统的脚本，特别适合新手用户。以下是其主要功能和使用方法。
-
----
 
 ### 功能
 
@@ -24,14 +21,44 @@
    - 提升网络性能。
 9. **清理系统垃圾**
 
----
-
 ### 使用方法
 
 运行以下一键命令即可执行所有优化步骤：
 
 ```bash
 wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/systemenhance/refs/heads/main/systemenhance.sh && sudo chmod +x /tmp/systemenhance.sh && sudo bash /tmp/systemenhance.sh
-注意：如果系统中没有 sudo 权限，可以移除命令中的 sudo，使用以下命令：
+```
+
+**注意**：如果系统中没有 `sudo` 权限，可以移除命令中的 `sudo`，使用以下命令：
+
 ```bash
 wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/systemenhance/refs/heads/main/systemenhance.sh && chmod +x /tmp/systemenhance.sh && bash /tmp/systemenhance.sh
+```
+
+### 示例
+
+#### 使用 `sudo` 的安装命令：
+
+```bash
+wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/systemenhance/refs/heads/main/systemenhance.sh \
+&& sudo chmod +x /tmp/systemenhance.sh \
+&& sudo bash /tmp/systemenhance.sh
+```
+
+#### 无 `sudo` 权限的安装命令：
+
+```bash
+wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/systemenhance/refs/heads/main/systemenhance.sh \
+&& chmod +x /tmp/systemenhance.sh \
+&& bash /tmp/systemenhance.sh
+```
+
+### 贡献
+
+欢迎贡献代码、提出建议或报告问题。请访问 [GitHub 仓库](https://github.com/Vincentkeio/systemenhance) 获取更多信息。
+
+### 许可证
+
+本项目采用 [MIT 许可证](LICENSE)。
+
+感谢使用 **systemenhance**，祝您使用愉快！
