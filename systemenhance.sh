@@ -7,11 +7,6 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # 无色
 
-# 初始化变量
-bbr_modified=false
-ssh_port_changed=false
-new_ssh_port=22
-
 # 检查是否为root用户
 if [ "$EUID" -ne 0 ]; then
   echo -e "${RED}请使用root权限运行此脚本！${NC}"
@@ -34,7 +29,7 @@ get_system_info() {
     if [[ -f /etc/os-release ]]; then
         source /etc/os-release
         SYSTEM_NAME=$NAME
-        SYSTEM_CODENAME=${VERSION_CODENAME:-}
+        SYSTEM_CODENAME=$VERSION_CODENAME
         SYSTEM_VERSION=$VERSION
     fi
 
@@ -61,8 +56,8 @@ get_system_info() {
 
     # 5. 尝试使用 dpkg 获取系统信息
     if [[ -z "$SYSTEM_NAME" ]] && command -v dpkg &>/dev/null; then
-        SYSTEM_NAME=$(dpkg --status lsb-release 2>/dev/null | grep "Package" | awk '{print $2}')
-        SYSTEM_CODENAME=$(dpkg --status lsb-release 2>/dev/null | grep "Version" | awk '{print $2}')
+        SYSTEM_NAME=$(dpkg --status lsb-release | grep "Package" | awk '{print $2}')
+        SYSTEM_CODENAME=$(dpkg --status lsb-release | grep "Version" | awk '{print $2}')
         SYSTEM_VERSION=$SYSTEM_CODENAME
     fi
 
@@ -84,7 +79,7 @@ get_system_info() {
     fi
 
     # 9. 如果没有获取到系统信息，退出
-    if [[ -z "$SYSTEM_NAME" || -z "$SYSTEM_VERSION" ]]; then
+    if [[ -z "$SYSTEM_NAME" || -z "$SYSTEM_CODENAME" || -z "$SYSTEM_VERSION" ]]; then
         echo -e "${RED}无法获取系统信息${NC}"
         exit 1
     fi
@@ -102,47 +97,69 @@ echo -e "内核版本: ${GREEN}$KERNEL_VERSION${NC}"
 echo -e "系统架构: ${GREEN}$SYSTEM_ARCH${NC}"
 echo
 
+# 二、更新系统
+echo -e "${BLUE}正在更新系统...${NC}"
+echo
+if command -v apt &> /dev/null; then
+  apt update && apt upgrade -y
+elif command -v yum &> /dev/null; then
+  yum update -y
+else
+  echo -e "${RED}未检测到 apt 或 yum，无法更新系统${NC}"
+  exit 1
+fi
+
+echo -e "${GREEN}系统更新完成。${NC}"
+echo
+
 # 一、检查并安装常用组件
 echo -e "${BLUE}正在检查并安装常用组件：sudo, wget, curl, fail2ban, ufw...${NC}"
 echo
 
-# 函数：安装软件包
-install_package() {
-    local package=$1
-    if ! command -v "$package" &> /dev/null; then
-        echo -e "${YELLOW}未检测到 $package，正在安装...${NC}"
-        if command -v apt &> /dev/null; then
-            apt update && apt install -y "$package"
-        elif command -v yum &> /dev/null; then
-            yum install -y "$package"
-        else
-            echo -e "${RED}未检测到 apt 或 yum，无法安装 $package${NC}"
-            exit 1
-        fi
-    else
-        echo -e "${GREEN}$package 已安装${NC}"
-    fi
-}
-
 # 检查并安装 sudo
-install_package sudo
+if ! command -v sudo &> /dev/null; then
+  echo -e "${YELLOW}未检测到 sudo，正在安装...${NC}"
+  apt install -y sudo || yum install -y sudo
+else
+  echo -e "${GREEN}sudo 已安装${NC}"
+fi
 
 # 检查并安装 wget
-install_package wget
+if ! command -v wget &> /dev/null; then
+  echo -e "${YELLOW}未检测到 wget，正在安装...${NC}"
+  apt install -y wget || yum install -y wget
+else
+  echo -e "${GREEN}wget 已安装${NC}"
+fi
 
 # 检查并安装 curl
-install_package curl
+if ! command -v curl &> /dev/null; then
+  echo -e "${YELLOW}未检测到 curl，正在安装...${NC}"
+  apt install -y curl || yum install -y curl
+else
+  echo -e "${GREEN}curl 已安装${NC}"
+fi
 
 # 检查并安装 fail2ban
-install_package fail2ban
+if ! command -v fail2ban-client &> /dev/null; then
+  echo -e "${YELLOW}未检测到 fail2ban，正在安装...${NC}"
+  apt install -y fail2ban || yum install -y fail2ban
+else
+  echo -e "${GREEN}fail2ban 已安装${NC}"
+fi
 
 # 检查并安装 ufw
-install_package ufw
+if ! command -v ufw &> /dev/null; then
+  echo -e "${YELLOW}未检测到 ufw，正在安装...${NC}"
+  apt install -y ufw || yum install -y ufw
+else
+  echo -e "${GREEN}ufw 已安装${NC}"
+fi
 
 echo -e "${GREEN}常用组件安装完成。${NC}"
 echo
 
-# 二、检测并设置网络优先级的功能模块
+# 检测并设置网络优先级的功能模块
 check_and_set_network_priority() {
     echo -e "${BLUE}现在开始IPv4/IPv6网络配置${NC}"
     echo
@@ -186,30 +203,28 @@ check_and_set_network_priority() {
         ipv4_valid=false
     fi
 
-    # 修改 /etc/gai.conf 来调整优先级
-    adjust_ipv4_ipv6_priority() {
-        if [ "$1" == "IPv4优先" ]; then
-            # 设置IPv4优先
-            if ! grep -q "^precedence ::ffff:0:0/96  100" /etc/gai.conf; then
-                echo "precedence ::ffff:0:0/96  100" >> /etc/gai.conf
-                echo -e "${GREEN}已设置IPv4优先，并且配置已永久生效。${NC}"
-            else
-                echo -e "${GREEN}IPv4优先配置已存在。${NC}"
-            fi
-        elif [ "$1" == "IPv6优先" ]; then
-            # 移除IPv4优先设置
-            sed -i '/^precedence ::ffff:0:0\/96  100/d' /etc/gai.conf
-            echo -e "${GREEN}已设置IPv6优先，并且配置已永久生效。${NC}"
-        fi
-    }
-
     # 检测当前优先级设置
-    current_preference="IPv6优先" # 默认
-    if grep -q "^precedence ::ffff:0:0/96  100" /etc/gai.conf; then
-        current_preference="IPv4优先"
+    if sysctl net.ipv6.conf.all.prefer_ipv4 &>/dev/null; then
+        ipv4_preference=$(sysctl net.ipv6.conf.all.prefer_ipv4 | awk '{print $3}')
+        if [ "$ipv4_preference" == "1" ]; then
+            current_preference="IPv4优先"
+        elif [ "$ipv4_preference" == "0" ]; then
+            if [ "$ipv4_valid" == false ] && [ "$ipv6_valid" == true ]; then
+                echo -e "${YELLOW}检测到本机为IPv6 only网络环境。${NC}"
+                current_preference="IPv6优先"
+            else
+                current_preference="IPv6优先"
+            fi
+        else
+            current_preference="未配置"
+        fi
+        echo -e "当前系统的优先级设置是: ${GREEN}$current_preference${NC}"
+    else
+        if [ "$ipv4_valid" == false ] && [ "$ipv6_valid" == true ]; then
+            echo -e "${YELLOW}检测到本机为IPv6 only网络环境。${NC}"
+        fi
+        echo -e "未找到 prefer_ipv4 配置项，默认未配置优先级"
     fi
-    echo -e "当前系统的优先级设置是: ${GREEN}$current_preference${NC}"
-    echo
 
     # 如果是双栈模式，提供选择优先级的选项
     if [ -n "$ipv4_address" ] && [ -n "$ipv6_address" ] && [ "$ipv6_valid" == true ] && [ "$ipv4_valid" == true ]; then
@@ -219,14 +234,22 @@ check_and_set_network_priority() {
             case $choice in
                 "IPv4优先")
                     echo -e "您选择了IPv4优先。"
-                    # 设置IPv4优先并修改 /etc/gai.conf
-                    adjust_ipv4_ipv6_priority "IPv4优先"
+                    # 设置IPv4优先并写入 /etc/sysctl.conf 使其永久生效
+                    sudo sysctl -w net.ipv6.conf.all.prefer_ipv4=1
+                    sudo sysctl -w net.ipv6.conf.default.prefer_ipv4=1
+                    echo "net.ipv6.conf.all.prefer_ipv4=1" | sudo tee -a /etc/sysctl.conf > /dev/null
+                    echo "net.ipv6.conf.default.prefer_ipv4=1" | sudo tee -a /etc/sysctl.conf > /dev/null
+                    echo -e "已设置IPv4优先，并且配置已永久生效。"
                     break
                     ;;
                 "IPv6优先")
                     echo -e "您选择了IPv6优先。"
-                    # 设置IPv6优先并修改 /etc/gai.conf
-                    adjust_ipv4_ipv6_priority "IPv6优先"
+                    # 设置IPv6优先并写入 /etc/sysctl.conf 使其永久生效
+                    sudo sysctl -w net.ipv6.conf.all.prefer_ipv4=0
+                    sudo sysctl -w net.ipv6.conf.default.prefer_ipv4=0
+                    echo "net.ipv6.conf.all.prefer_ipv4=0" | sudo tee -a /etc/sysctl.conf > /dev/null
+                    echo "net.ipv6.conf.default.prefer_ipv4=0" | sudo tee -a /etc/sysctl.conf > /dev/null
+                    echo -e "已设置IPv6优先，并且配置已永久生效。"
                     break
                     ;;
                 "取消")
@@ -253,17 +276,438 @@ check_and_set_network_priority() {
 check_and_set_network_priority
 echo
 
-# 显示当前磁盘空间和 SWAP 配置
-echo -e "${BLUE}当前磁盘空间：${NC}"
-df -h
+# 后续大脚本的其他内容
+echo -e "${GREEN}继续执行后续脚本...${NC}"
 echo
 
-echo -e "${BLUE}当前SWAP配置：${NC}"
-swapon --show
+# 检查SSH服务是否安装并运行
+check_ssh_service() {
+  echo -e "${BLUE}现在开始检测SSH端口...${NC}"
+  echo
+
+  if ! systemctl is-active --quiet ssh && ! systemctl is-active --quiet sshd; then
+    echo -e "${YELLOW}未检测到SSH服务。${NC}"
+    read -p "是否需要启动并设置SSH服务并更改端口号（y/n）？" choice
+    if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
+      install_ssh
+      configure_ssh_port
+    else
+      echo -e "${YELLOW}跳过SSH服务设置，继续执行其他任务。${NC}"
+    fi
+  else
+    configure_ssh_port
+  fi
+}
+
+# 配置SSH端口
+configure_ssh_port() {
+  # 获取当前SSH端口
+  current_port=$(grep -E "^#?Port " /etc/ssh/sshd_config | awk '{print $2}')
+  if [ -z "$current_port" ]; then
+    current_port=22 # 如果未设置Port，默认值为22
+  fi
+
+  echo -e "当前SSH端口为: ${GREEN}$current_port${NC}"
+
+  # 询问用户是否需要修改SSH端口
+  read -p "是否需要修改SSH端口？(y/n): " modify_choice
+  if [[ "$modify_choice" == "y" || "$modify_choice" == "Y" ]]; then
+    # 提示用户输入新的SSH端口
+    read -p "请输入新的SSH端口号 (1-65535): " new_port
+
+    # 验证端口号是否有效
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1 ] || [ "$new_port" -gt 65535 ]; then
+      echo -e "${RED}错误：请输入一个有效的端口号（1-65535）！${NC}"
+      return  # 跳过当前功能块，继续执行后续部分
+    fi
+
+    # 修改sshd_config文件
+    ssh_config_file="/etc/ssh/sshd_config"
+    if [ -f "$ssh_config_file" ]; then
+      # 备份配置文件
+      cp "$ssh_config_file" "${ssh_config_file}.bak"
+
+      # 更新端口配置
+      if grep -qE "^#?Port " "$ssh_config_file"; then
+        sed -i "s/^#\?Port .*/Port $new_port/" "$ssh_config_file"
+      else
+        echo "Port $new_port" >> "$ssh_config_file"
+      fi
+
+      echo -e "SSH 配置已更新，新的端口号为: ${GREEN}$new_port${NC}"
+    else
+      echo -e "${RED}错误：找不到SSH配置文件 $ssh_config_file${NC}"
+      return  # 跳过当前功能块，继续执行后续部分
+    fi
+
+    # 检查修改后的配置是否生效
+    current_port_in_ssh_config=$(grep "^Port " "$ssh_config_file" | awk '{print $2}')
+    
+    if [ "$current_port_in_ssh_config" -eq "$new_port" ]; then
+      echo -e "SSH端口修改成功，新端口为 ${GREEN}$new_port${NC}"
+    else
+      echo -e "${RED}错误：SSH端口修改失败，请检查配置。${NC}"
+      return  # 跳过当前功能块，继续执行后续部分
+    fi
+  else
+    echo -e "${YELLOW}跳过SSH端口修改，继续执行其他任务。${NC}"
+  fi
+
+  # 检查SSH服务是否已正常启用
+  if ! systemctl is-active --quiet ssh && ! systemctl is-active --quiet sshd; then
+    echo -e "${YELLOW}警告：SSH服务未正常启用，无法继续检查新端口是否生效。${NC}"
+    return  # 跳过当前功能块，继续执行后续部分
+  else
+    echo -e "${GREEN}SSH服务已正常启用，继续检查新端口是否生效。${NC}"
+  fi
+
+  # 检查新端口是否在防火墙中开放
+  check_firewall
+}
+
+# 检查防火墙并开放新端口
+check_firewall() {
+  if command -v ufw >/dev/null 2>&1; then
+    # ufw防火墙启用检查
+    if ! sudo ufw status | grep -q "Status: active"; then
+      echo -e "${YELLOW}防火墙未启用，且新端口未被防火墙阻拦。${NC}"
+    else
+      # 检查新端口是否已在防火墙规则中放行
+      if ! sudo ufw status | grep -q "$new_port/tcp"; then
+        sudo ufw allow $new_port/tcp
+        echo -e "${GREEN}防火墙已启用，新端口已添加放行规则。${NC}"
+      else
+        echo -e "${GREEN}新端口已开放，防火墙规则已放行该端口。${NC}"
+      fi
+    fi
+  elif command -v firewall-cmd >/dev/null 2>&1; then
+    # firewalld防火墙启用检查
+    if ! sudo systemctl is-active --quiet firewalld; then
+      echo -e "${YELLOW}防火墙未启用，且新端口未被防火墙阻拦。${NC}"
+    else
+      # 检查新端口是否已在防火墙规则中放行
+      if ! sudo firewall-cmd --list-all | grep -q "$new_port/tcp"; then
+        sudo firewall-cmd --permanent --add-port=$new_port/tcp
+        sudo firewall-cmd --reload
+        echo -e "${GREEN}防火墙已启用，新端口已添加放行规则。${NC}"
+      else
+        echo -e "${GREEN}新端口已开放，防火墙规则已放行该端口。${NC}"
+      fi
+    fi
+  else
+    echo -e "${YELLOW}警告：未检测到受支持的防火墙工具，请手动开放新端口 $new_port。${NC}"
+    echo -e "${YELLOW}防火墙未启用，且新端口未被防火墙阻拦。${NC}"
+  fi
+
+  # 检查新端口是否成功开放
+  if ! ss -tuln | grep -q $new_port; then
+    echo -e "${RED}错误：新端口 $new_port 未成功开放，执行修复步骤...${NC}"
+    
+    # 执行修复步骤：重新加载配置并重启SSH服务
+    echo -e "执行 ${GREEN}systemctl daemon-reload${NC}"
+    sudo systemctl daemon-reload
+
+    echo -e "执行 ${GREEN}/etc/init.d/ssh restart${NC}"
+    sudo /etc/init.d/ssh restart
+
+    echo -e "执行 ${GREEN}systemctl restart ssh${NC}"
+    sudo systemctl restart ssh
+
+    # 再次检查新端口是否生效
+    echo -e "检查新端口是否生效..."
+    ss -tuln | grep $new_port
+
+    # 即使修复失败，也只提示，不退出，跳过当前功能块
+    if ! ss -tuln | grep -q $new_port; then
+      echo -e "${YELLOW}警告：修复后新端口 $new_port 仍未成功开放，跳过该功能块，继续后续任务。${NC}"
+    fi
+  else
+    echo -e "${GREEN}新端口 $new_port 已成功开放。${NC}"
+  fi
+}
+
+# 安装并启动SSH服务
+install_ssh() {
+  if [[ "$SYSTEM_NAME" == "Ubuntu" || "$SYSTEM_NAME" == "Debian" ]]; then
+    # Ubuntu/Debian 系统
+    if ! systemctl is-active --quiet ssh; then
+      echo -e "${YELLOW}SSH 服务未安装或未启动，正在安装 SSH 服务...${NC}"
+      apt update && apt install -y openssh-server
+      systemctl enable ssh
+      systemctl start ssh
+      echo -e "${GREEN}SSH 服务已安装并启动！${NC}"
+    fi
+  elif [[ "$SYSTEM_NAME" == "CentOS" || "$SYSTEM_NAME" == "RedHat" || "$SYSTEM_NAME" == "RHEL" ]]; then
+    # CentOS/RHEL 系统
+    if ! systemctl is-active --quiet sshd; then
+      echo -e "${YELLOW}SSH 服务未安装或未启动，正在安装 SSH 服务...${NC}"
+      yum install -y openssh-server
+      systemctl enable sshd
+      systemctl start sshd
+      echo -e "${GREEN}SSH 服务已安装并启动！${NC}"
+    fi
+  else
+    echo -e "${RED}无法识别的操作系统：$SYSTEM_NAME，无法处理 SSH 服务。${NC}"
+    return  # 跳过当前功能块，继续执行后续部分
+  fi
+}
+
+# 调用检查SSH服务函数
+check_ssh_service
 echo
 
-echo -e "${BLUE}SWAP详情：${NC}"
-free -h
+# 检测 SSH 服务是否启用的方法
+echo -e "${BLUE}正在检测 SSH 服务状态...${NC}"
+echo
+
+# 使用 systemctl 检测 SSH 服务
+if systemctl is-active --quiet sshd; then
+  ssh_status="enabled"
+else
+  # 如果 systemctl 检测失败，检查 sshd 进程是否存在
+  if pgrep -x "sshd" > /dev/null; then
+    ssh_status="enabled (via process)"
+  else
+    ssh_status="disabled"
+  fi
+fi
+
+if [ "$ssh_status" == "disabled" ]; then
+  echo -e "${YELLOW}当前未启用 SSH 服务，跳过检查端口的步骤。${NC}"
+  echo -e "${RED}注意：如果继续执行脚本，可能会导致所有 SSH 端口关闭，进而无法通过 SSH 登录系统。${NC}"
+  read -p "您确定要继续吗？（继续请输入 y，取消请输入 n）： " choice
+  if [[ "$choice" != "y" && "$choice" != "Y" ]]; then
+    echo -e "${RED}脚本执行已取消。${NC}"
+    exit 1
+  fi
+else
+  # 检测当前所有的 SSH 服务端口
+  echo -e "${BLUE}正在检测当前 SSH 服务端口...${NC}"
+  echo
+
+  # 尝试从 SSH 配置文件中获取端口，忽略带注释的行
+  ssh_config_file="/etc/ssh/sshd_config"
+  if [ ! -f "$ssh_config_file" ]; then
+    echo -e "${RED}错误：找不到 SSH 配置文件 $ssh_config_file${NC}"
+    exit 1
+  fi
+
+  # 提取配置文件中的所有不带注释的 Port 设置，去除注释和空行
+  ssh_ports=$(grep -E "^\s*Port\s+" "$ssh_config_file" | grep -v '^#' | awk '{print $2}' | sort | uniq)
+
+  # 如果配置文件中没有找到端口，则默认使用 22
+  if [ -z "$ssh_ports" ]; then
+    echo -e "${YELLOW}未在 SSH 配置文件中找到端口设置，默认端口为 22。${NC}"
+    read -p "是否继续执行脚本？（继续请输入 y，取消请输入 n）： " choice
+    if [[ "$choice" != "y" && "$choice" != "Y" ]]; then
+      echo -e "${RED}脚本执行已取消。${NC}"
+      exit 1
+    fi
+    ssh_ports="22"
+  else
+    echo -e "检测到以下 SSH 端口（不带注释的）："
+    i=1
+    for port in $ssh_ports; do
+      echo -e "$i) $port"
+      ((i++))
+    done
+
+    # 提示用户选择要保留的端口
+    read -p "请输入端口号的序号（例如 1, 2, 3...）： " selected_option
+
+    # 获取选择的端口
+    selected_port=$(echo "$ssh_ports" | sed -n "${selected_option}p")
+
+    # 检查输入的端口是否有效
+    if [ -z "$selected_port" ]; then
+      echo -e "${RED}错误：所选端口无效，脚本退出。${NC}"
+      exit 1
+    fi
+
+    echo -e "您选择保留的 SSH 端口为: ${GREEN}$selected_port${NC}"
+    
+    # 关闭其他 SSH 端口
+    i=1
+    for port in $ssh_ports; do
+      if [ "$port" != "$selected_port" ]; then
+        echo -e "正在关闭 SSH 端口 $port..."
+        ufw deny $port/tcp
+      fi
+      ((i++))
+    done
+  fi
+fi
+
+# 四、启用防火墙（UFW 或 firewalld）
+echo -e "${BLUE}正在检查并启用防火墙...${NC}"
+echo
+
+# 检查是否安装了ufw
+if ! command -v ufw &>/dev/null; then
+  echo -e "${YELLOW}未检测到 ufw，正在安装 ufw...${NC}"
+  if command -v apt &>/dev/null; then
+    # Ubuntu 或 Debian 系统
+    sudo apt update
+    sudo apt install -y ufw
+  elif command -v yum &>/dev/null; then
+    # CentOS 或 RHEL 系统
+    sudo yum install -y ufw
+  fi
+fi
+
+# 确保ufw防火墙启用
+if ! sudo ufw status &>/dev/null; then
+  echo -e "${YELLOW}正在启用 ufw 防火墙...${NC}"
+  sudo ufw enable
+fi
+
+# 开放指定端口
+sudo ufw allow ssh
+echo -e "${GREEN}SSH 端口已开放。${NC}"
+
+# 开放新端口
+sudo ufw allow $new_port/tcp
+echo -e "新端口 $new_port 已开放。"
+
+# 关闭旧端口
+sudo ufw delete allow $current_port/tcp || echo -e "${YELLOW}警告：未找到旧端口 $current_port 的规则${NC}"
+echo -e "旧端口 $current_port 已关闭。"
+
+# 重新加载防火墙规则
+sudo ufw reload
+echo -e "${GREEN}防火墙规则已重新加载。${NC}"
+
+# 开放所选的 SSH 端口
+if [ "$ssh_ports" != "22" ]; then
+  echo -e "${BLUE}正在开放所选的 SSH 端口 $selected_port...${NC}"
+  ufw allow $selected_port/tcp
+else
+  echo -e "${GREEN}默认端口 22 已开放${NC}"
+fi
+
+# 检测其他常用服务的端口并开放
+echo -e "${BLUE}正在检测并开放常用服务端口...${NC}"
+echo
+
+# 使用 ss 或 netstat 检测所有监听的端口
+ss -tuln | grep -E "tcp|udp" | awk '{print $5}' | cut -d: -f2 | sort | uniq | while read port; do
+  # 跳过端口为空或不存在的情况
+  if [ -z "$port" ]; then
+    continue
+  fi
+
+  # 检查是否已经开放此端口
+  if ! sudo ufw status | grep -q "$port"; then
+    echo -e "正在开放端口 $port..."
+    sudo ufw allow $port/tcp   # 开放 TCP 协议的端口
+    sudo ufw allow $port/udp   # 开放 UDP 协议的端口
+  fi
+done
+
+# 重新加载防火墙规则，确保更改生效
+sudo ufw reload
+echo -e "${GREEN}所有占用端口已成功开放。${NC}"
+
+echo -e "${GREEN}所有已使用的端口已开放。${NC}"
+echo
+
+# 启用 Fail2Ban
+echo -e "${BLUE}正在启用 Fail2Ban...${NC}"
+systemctl enable fail2ban
+systemctl start fail2ban
+echo -e "${GREEN}Fail2Ban 启用成功。${NC}"
+
+# 确保防火墙规则生效
+ufw reload
+echo -e "${GREEN}防火墙规则已重新加载。${NC}"
+
+# 完成提示
+echo -e "${GREEN}脚本执行完成！${NC}"
+echo
+
+# 输出当前服务的防火墙状态
+echo -e "${BLUE}当前服务的防火墙状态：${NC}"
+ufw status verbose
+echo
+
+# 检查 Fail2Ban 状态
+echo -e "${BLUE}Fail2Ban 状态：${NC}"
+fail2ban-client status
+echo
+
+# 显示当前时区
+echo -e "${BLUE}当前时区是：$(timedatectl show --property=Timezone --value)${NC}"
+echo
+
+# 显示时区选择菜单
+echo -e "${BLUE}请选择要设置的时区：${NC}"
+echo "1) 上海 (东八区, UTC+8)"
+echo "2) 纽约 (美国东部时区, UTC-5)"
+echo "3) 洛杉矶 (美国西部时区, UTC-8)"
+echo "4) 伦敦 (零时区, UTC+0)"
+echo "5) 东京 (东九区, UTC+9)"
+echo "6) 巴黎 (欧洲中部时区, UTC+1)"
+echo "7) 曼谷 (东七区, UTC+7)"
+echo "8) 悉尼 (东十区, UTC+10)"
+echo "9) 迪拜 (海湾标准时区, UTC+4)"
+echo "10) 里约热内卢 (巴西时间, UTC-3)"
+echo "11) 维持当前时区"
+
+# 获取用户输入
+read -p "请输入选项 (1/2/3/4/5/6/7/8/9/10/11): " timezone_choice
+
+# 根据用户选择设置时区
+case $timezone_choice in
+  1)
+    echo -e "${BLUE}正在设置时区为 上海 (东八区, UTC+8)...${NC}"
+    sudo timedatectl set-timezone Asia/Shanghai
+    ;;
+  2)
+    echo -e "${BLUE}正在设置时区为 纽约 (美国东部时区, UTC-5)...${NC}"
+    sudo timedatectl set-timezone America/New_York
+    ;;
+  3)
+    echo -e "${BLUE}正在设置时区为 洛杉矶 (美国西部时区, UTC-8)...${NC}"
+    sudo timedatectl set-timezone America/Los_Angeles
+    ;;
+  4)
+    echo -e "${BLUE}正在设置时区为 伦敦 (零时区, UTC+0)...${NC}"
+    sudo timedatectl set-timezone Europe/London
+    ;;
+  5)
+    echo -e "${BLUE}正在设置时区为 东京 (东九区, UTC+9)...${NC}"
+    sudo timedatectl set-timezone Asia/Tokyo
+    ;;
+  6)
+    echo -e "${BLUE}正在设置时区为 巴黎 (欧洲中部时区, UTC+1)...${NC}"
+    sudo timedatectl set-timezone Europe/Paris
+    ;;
+  7)
+    echo -e "${BLUE}正在设置时区为 曼谷 (东七区, UTC+7)...${NC}"
+    sudo timedatectl set-timezone Asia/Bangkok
+    ;;
+  8)
+    echo -e "${BLUE}正在设置时区为 悉尼 (东十区, UTC+10)...${NC}"
+    sudo timedatectl set-timezone Australia/Sydney
+    ;;
+  9)
+    echo -e "${BLUE}正在设置时区为 迪拜 (海湾标准时区, UTC+4)...${NC}"
+    sudo timedatectl set-timezone Asia/Dubai
+    ;;
+  10)
+    echo -e "${BLUE}正在设置时区为 里约热内卢 (巴西时间, UTC-3)...${NC}"
+    sudo timedatectl set-timezone America/Sao_Paulo
+    ;;
+  11)
+    echo -e "${YELLOW}您选择维持当前时区，脚本将继续执行。${NC}"
+    ;;
+  *)
+    echo -e "${YELLOW}无效选项，选择维持当前时区。${NC}"
+    ;;
+esac
+
+# 提示用户时区已设置完成
+echo -e "${GREEN}时区设置完成！${NC}"
 echo
 
 # 三、管理 SWAP
@@ -404,6 +848,30 @@ manage_swap(){
                 echo -e "${GREEN}SWAP 分区 $selected_swap_partition 已成功调整为 ${new_swap_size} MB。${NC}"
             else
                 echo -e "${YELLOW}未检测到 SWAP 文件或 SWAP 分区。${NC}"
+                echo -e "${BLUE}是否要创建一个新的 SWAP 文件？${NC}"
+                read -p "请输入 (y/n): " create_swap
+                if [[ "$create_swap" == "y" || "$create_swap" == "Y" ]]; then
+                    echo -e "${GREEN}开始创建新的 SWAP 文件...${NC}"
+                    sudo fallocate -l "${new_swap_size}M" /swapfile 2>/dev/null || {
+                        echo -e "${BLUE}fallocate 不可用，使用 dd 创建 SWAP 文件...${NC}"
+                        sudo dd if=/dev/zero bs=1M count="$new_swap_size" of=/swapfile status=progress || { echo -e "${RED}错误：无法创建 SWAP 文件 /swapfile。${NC}"; return; }
+                    }
+                    sudo chmod 600 /swapfile
+                    sudo mkswap /swapfile || { echo -e "${RED}错误：无法格式化 SWAP 文件 /swapfile。${NC}"; return; }
+                    sudo swapon /swapfile || { echo -e "${RED}错误：无法启用 SWAP 文件 /swapfile。${NC}"; return; }
+
+                    # 备份 /etc/fstab
+                    sudo cp /etc/fstab /etc/fstab.bak
+
+                    # 添加 SWAP 文件到 /etc/fstab
+                    if ! grep -q "^/swapfile\s" /etc/fstab; then
+                        echo "/swapfile none swap defaults 0 0" | sudo tee -a /etc/fstab > /dev/null
+                    fi
+
+                    echo -e "${GREEN}已成功创建并启用新的 SWAP 文件 /swapfile，大小为 ${new_swap_size} MB。${NC}"
+                else
+                    echo -e "${YELLOW}未创建新的 SWAP 文件。${NC}"
+                fi
             fi
 
             # 显示新的 SWAP 信息
@@ -425,173 +893,6 @@ manage_swap(){
 manage_swap
 echo
 
-# 四、设置时区
-set_timezone(){
-    echo -e "${BLUE}当前时区设置为: $(timedatectl | grep "Time zone" | awk '{print $3}')${NC}"
-    echo -e "${BLUE}可用的时区列表: ${NC}"
-    timedatectl list-timezones | less
-
-    read -p "请输入您要设置的时区（例如：Asia/Shanghai）: " timezone
-
-    if timedatectl list-timezones | grep -qw "$timezone"; then
-        timedatectl set-timezone "$timezone"
-        echo -e "${GREEN}时区已成功设置为 $timezone。${NC}"
-    else
-        echo -e "${RED}无效的时区输入。请重新运行脚本并输入正确的时区。${NC}"
-    fi
-}
-
-# 调用设置时区函数
-set_timezone
-echo
-
-# 五、修改SSH端口
-change_ssh_port(){
-    current_ssh_port=$(grep "^Port " /etc/ssh/sshd_config | awk '{print $2}')
-
-    echo -e "${BLUE}当前SSH端口: ${GREEN}$current_ssh_port${NC}"
-    read -p "请输入新的SSH端口号（默认保持当前端口: $current_ssh_port）: " new_port
-
-    # 如果用户按回车，则保持当前端口
-    if [[ -z "$new_port" ]]; then
-        echo -e "${YELLOW}保持当前SSH端口: $current_ssh_port${NC}"
-        return
-    fi
-
-    # 验证端口号是否为有效的数字且在1-65535之间
-    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -le 0 ] || [ "$new_port" -gt 65535 ]; then
-        echo -e "${RED}错误：请输入一个有效的端口号（1-65535）。${NC}"
-        return
-    fi
-
-    # 检查端口是否被占用
-    if ss -tuln | grep -q ":$new_port "; then
-        echo -e "${RED}错误：端口 $new_port 已被占用。${NC}"
-        return
-    fi
-
-    # 修改SSH配置文件
-    sed -i "s/^#Port .*/Port $new_port/" /etc/ssh/sshd_config
-    sed -i "s/^Port .*/Port $new_port/" /etc/ssh/sshd_config
-
-    # 允许新端口通过防火墙
-    if command -v ufw &>/dev/null; then
-        ufw allow "$new_port"/tcp
-        ufw delete allow "$current_ssh_port"/tcp
-    elif command -v firewall-cmd &>/dev/null; then
-        firewall-cmd --permanent --add-port="$new_port"/tcp
-        firewall-cmd --permanent --remove-port="$current_ssh_port"/tcp
-        firewall-cmd --reload
-    fi
-
-    # 重启SSH服务
-    systemctl restart sshd
-
-    echo -e "${GREEN}SSH端口已成功更改为 $new_port。${NC}"
-    ssh_port_changed=true
-}
-
-# 调用修改SSH端口函数
-change_ssh_port
-echo
-
-# 六、启用防火墙
-enable_firewall(){
-    echo -e "${BLUE}正在配置防火墙...${NC}"
-
-    if command -v ufw &>/dev/null; then
-        # 启用UFW
-        echo -e "${GREEN}启用UFW防火墙...${NC}"
-        ufw enable
-        # 默认拒绝入站，允许出站
-        ufw default deny incoming
-        ufw default allow outgoing
-        # 允许SSH端口
-        if [ "$ssh_port_changed" = true ]; then
-            ufw allow "$new_port"/tcp
-        else
-            ufw allow "$current_ssh_port"/tcp
-        fi
-        echo -e "${GREEN}UFW防火墙已启用并配置完毕。${NC}"
-    elif command -v firewall-cmd &>/dev/null; then
-        # 启用firewalld
-        echo -e "${GREEN}启用firewalld防火墙...${NC}"
-        systemctl start firewalld
-        systemctl enable firewalld
-        # 默认拒绝入站，允许出站
-        firewall-cmd --permanent --set-default-zone=public
-        # 允许SSH端口
-        if [ "$ssh_port_changed" = true ]; then
-            firewall-cmd --permanent --add-port="$new_port"/tcp
-        else
-            firewall-cmd --permanent --add-port="$current_ssh_port"/tcp
-        fi
-        firewall-cmd --reload
-        echo -e "${GREEN}firewalld防火墙已启用并配置完毕。${NC}"
-    else
-        echo -e "${YELLOW}未检测到ufw或firewalld防火墙工具，跳过防火墙配置。${NC}"
-    fi
-}
-
-# 调用启用防火墙函数
-enable_firewall
-echo
-
-# 七、启用 Fail2Ban
-enable_fail2ban(){
-    echo -e "${BLUE}正在配置 Fail2Ban...${NC}"
-    
-    if [ -f /etc/fail2ban/jail.local ]; then
-        echo -e "${YELLOW}发现已存在 /etc/fail2ban/jail.local 配置文件，跳过创建。${NC}"
-    else
-        # 创建基本的 jail.local 配置
-        cat > /etc/fail2ban/jail.local <<EOL
-[DEFAULT]
-bantime  = 10m
-findtime  = 10m
-maxretry = 5
-
-[sshd]
-enabled = true
-port    = $(grep "^Port " /etc/ssh/sshd_config | awk '{print $2}')
-EOL
-    fi
-
-    # 重启 Fail2Ban 服务
-    systemctl restart fail2ban
-    systemctl enable fail2ban
-
-    echo -e "${GREEN}Fail2Ban 已成功启用并配置。${NC}"
-}
-
-# 调用启用 Fail2Ban 函数
-enable_fail2ban
-echo
-
-# 八、启用 BBR+FQ
-enable_bbr_fq() {
-    echo -e "${BLUE}正在启用 BBR 和 FQ 加速方案...${NC}"
-
-    # 启用 BBR
-    sysctl -w net.ipv4.tcp_congestion_control=bbr
-
-    # 启用 FQ（FQ是BBR的配套方案）
-    sysctl -w net.core.default_qdisc=fq
-
-    # 永久启用 BBR 和 FQ（在 /etc/sysctl.conf 中添加配置）
-    if ! grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.conf; then
-        echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    fi
-    if ! grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf; then
-        echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
-    fi
-
-    # 重新加载 sysctl 配置
-    sysctl -p
-
-    echo -e "${GREEN}BBR 和 FQ 已成功启用！${NC}"
-}
-
 # 检查是否已启用 BBR
 check_bbr() {
     sysctl net.ipv4.tcp_congestion_control | grep -q 'bbr'
@@ -605,6 +906,33 @@ show_bbr_info() {
     
     # 显示当前的默认队列调度器
     echo -e "${BLUE}当前系统的默认队列调度器: $(sysctl net.core.default_qdisc | awk '{print $3}')${NC}"
+}
+
+# 启用 BBR+FQ
+enable_bbr_fq() {
+    echo -e "${BLUE}正在启用 BBR 和 BBR+FQ 加速方案...${NC}"
+
+    # 启用 BBR
+    sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
+
+    # 永久启用 BBR（在 /etc/sysctl.conf 中添加配置）
+    if ! grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.conf; then
+        echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf
+    fi
+
+    # 启用 FQ（FQ是BBR的配套方案）
+    sudo sysctl -w net.ipv4.tcp_default_congestion_control=bbr
+    sudo sysctl -w net.core.default_qdisc=fq
+
+    # 永久启用 FQ
+    if ! grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf; then
+        echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf
+    fi
+
+    # 重新加载 sysctl 配置
+    sudo sysctl -p
+
+    echo -e "${GREEN}BBR 和 BBR+FQ 已成功启用！${NC}"
 }
 
 # 主程序
@@ -645,7 +973,7 @@ fi
 echo -e "${GREEN}继续执行脚本的其他部分...${NC}"
 echo
 
-# 九、清理系统垃圾
+# 四、清理系统垃圾
 echo -e "${BLUE}开始清理系统垃圾...${NC}"
 echo
 
@@ -666,14 +994,13 @@ fi
 
 # 清理临时文件
 echo -e "${BLUE}正在清理临时文件...${NC}"
-# 使用 find 命令删除超过7天的临时文件
-find /tmp -type f -mtime +7 -exec rm -f {} \;
-find /var/tmp -type f -mtime +7 -exec rm -f {} \;
+rm -rf /tmp/*
+rm -rf /var/tmp/*
 
 echo -e "${GREEN}系统垃圾清理完成！${NC}"
 echo
 
-# 十、清理日志文件（用户选择清理时间范围）
+# 五、清理日志文件（用户选择清理时间范围）
 echo -e "${BLUE}请选择要清理的日志文件时间范围：${NC}"
 echo "1) 清除一周内的日志"
 echo "2) 清除一月内的日志"
@@ -711,17 +1038,17 @@ esac
 echo -e "${GREEN}日志清理完成！${NC}"
 echo
 
-# 十一、系统优化完成提示
+# 六、系统优化完成提示
 echo -e "${GREEN}系统优化完成！${NC}"
 echo
 
 echo -e "本次优化包括："
 echo -e "1) ${GREEN}更新了系统并安装了常用组件（如 sudo, wget, curl, fail2ban, ufw）。${NC}"
 echo -e "2) ${GREEN}检测并配置了IPv4/IPv6环境，确保网络访问正常。${NC}"
-echo -e "3) ${GREEN}设置了时区。${NC}"
-echo -e "4) ${GREEN}修改了SSH端口（如果选择了修改）。${NC}"
-echo -e "5) ${GREEN}启用了防火墙并配置了常用端口，特别是SSH服务端口。${NC}"
-echo -e "6) ${GREEN}启用了 Fail2Ban 防护，增强了系统安全性。${NC}"
+echo -e "3) ${GREEN}设置了SSH端口，增强了远程登录安全性。${NC}"
+echo -e "4) ${GREEN}启用了防火墙并配置了常用端口，特别是 SSH 服务端口。${NC}"
+echo -e "5) ${GREEN}启用了 Fail2Ban 防护，增强了系统安全性。${NC}"
+echo -e "6) ${GREEN}根据您的选择，已调整系统时区设置。${NC}"
 echo -e "7) ${GREEN}根据您的选择，已调整或配置了 SWAP 大小。${NC}"
 echo -e "8) ${GREEN}根据您的选择，已设置BBR。${NC}"
 echo -e "9) ${GREEN}清理了系统垃圾文件和临时文件。${NC}"
@@ -733,13 +1060,13 @@ if [ "$bbr_modified" = true ]; then
     read -p "是否现在重启系统？(y/n): " reboot_choice
     if [[ "$reboot_choice" == "y" || "$reboot_choice" == "Y" ]]; then
         echo -e "${GREEN}正在重启系统...${NC}"
-        reboot
+        sudo reboot
     else
         echo -e "${YELLOW}您选择稍后手动重启系统。${NC}"
     fi
-elif [ "$ssh_port_changed" = true ]; then
-    echo -e "${YELLOW}修改了SSH端口，请确保在SSH客户端中使用新的端口号连接。${NC}"
+else
+    echo -e "${GREEN}系统优化完成，无需重启。${NC}"
 fi
 
 echo -e "${GREEN}所有操作已完成，系统已经优化并增强了安全性！${NC}"
-echo -e "${YELLOW}如果修改了SSH端口，记得在SSH工具上修改为新的端口，否则无法连接。${NC}"
+echo -e "${YELLOW}如果修改了SSH端口，记得在SSH工具上修改为新的端口，否则无法连接${NC}"
