@@ -57,8 +57,4 @@ wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/sys
 
 欢迎贡献代码、提出建议或报告问题。请访问 [GitHub 仓库](https://github.com/Vincentkeio/systemenhance) 获取更多信息。
 
-### 许可证
-
-本项目采用 [MIT 许可证](LICENSE)。
-
 感谢使用 **systemenhance**，祝您使用愉快！
