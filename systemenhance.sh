@@ -217,11 +217,9 @@ check_and_set_network_priority() {
     }
 
     # 检测当前优先级设置
-    current_preference="未配置"
+    current_preference="IPv6优先" # 默认
     if grep -q "^precedence ::ffff:0:0/96  100" /etc/gai.conf; then
         current_preference="IPv4优先"
-    else
-        current_preference="IPv6优先"
     fi
     echo -e "当前系统的优先级设置是: ${GREEN}$current_preference${NC}"
     echo
@@ -345,10 +343,13 @@ increase_swap() {
         fi
     else
         # 扩展现有 SWAP 文件
+        # 注意：fallocate 不支持缩小文件，因此这里只能通过增加大小
         fallocate -l "+${swap_add_size}M" "$new_swap_file" 2>/dev/null
         if [ $? -ne 0 ]; then
             # 如果 fallocate 不可用，使用 dd
-            dd if=/dev/zero bs=1M count="$swap_add_size" of="$new_swap_file" seek=$(($(stat -c %s "$new_swap_file") / 1048576)) conv=notrunc status=progress
+            current_size=$(stat -c%s "$new_swap_file")
+            new_size=$((current_size / 1048576 + swap_add_size))
+            dd if=/dev/zero bs=1M count="$swap_add_size" of="$new_swap_file" seek=$(($current_size / 1048576)) conv=notrunc status=progress
             if [ $? -ne 0 ]; then
                 echo -e "${RED}错误：无法扩展 SWAP 文件 $new_swap_file${NC}"
                 return
@@ -362,14 +363,14 @@ increase_swap() {
     # 格式化 SWAP 文件
     mkswap "$new_swap_file" 2>/dev/null
     if [ $? -ne 0 ]; then
-        echo -e "${RED}错误：无法格式化 SWAP 文件 $new_swap_file${NC}"
+        echo -e "${RED}错误：无法格式化 SWAP 文件 $new_swap_file。${NC}"
         return
     fi
 
     # 启用 SWAP 文件
     swapon "$new_swap_file" 2>/dev/null
     if [ $? -ne 0 ]; then
-        echo -e "${RED}错误：无法启用 SWAP 文件 $new_swap_file${NC}"
+        echo -e "${RED}错误：无法启用 SWAP 文件 $new_swap_file。${NC}"
         return
     fi
 
@@ -393,7 +394,9 @@ decrease_swap() {
     echo -e "${BLUE}正在减少 $swap_reduce_size MB 的 SWAP...${NC}"
 
     # 获取所有 SWAP 文件，按大小从大到小排序
-    swap_files=($(swapon --show=NAME,TYPE,SIZE --noheadings | awk '$2=="file"{print $1 " " $3}' | sort -k2 -nr | awk '{print $1}'))
+    swap_info=$(swapon --show=NAME,SIZE --noheadings | awk '$1 ~ /^\/swap/{print $1 " " $2}' | sort -k2 -nr)
+    swap_files=($(echo "$swap_info" | awk '{print $1}'))
+    swap_sizes=($(echo "$swap_info" | awk '{print $2}'))
 
     if [ "${#swap_files[@]}" -eq 0 ]; then
         echo -e "${RED}未检测到任何 SWAP 文件，无法减少 SWAP。${NC}"
@@ -402,90 +405,95 @@ decrease_swap() {
 
     total_swap_reduction=0
 
-    for swap_file in "${swap_files[@]}"; do
-        # 获取当前 SWAP 文件大小（MB）
-        current_swap_size=$(swapon --show=NAME,SIZE --noheadings | grep "$swap_file" | awk '{print $2}' | sed 's/M//')
-        
-        # 计算可减少的 SWAP 大小
-        max_reduce=$(($current_swap_size))
-        if [ "$max_reduce" -le 0 ]; then
+    for i in "${!swap_files[@]}"; do
+        swap_file="${swap_files[$i]}"
+        current_swap_size="${swap_sizes[$i]}" # e.g., "512M"
+
+        # 将 SWAP 大小转换为整数 MB
+        current_swap_size_mb=$(echo "$current_swap_size" | sed 's/M//')
+
+        if [ "$current_swap_size_mb" -le 0 ]; then
             continue
         fi
 
-        # 计算此次减少的大小
-        if [ $(($total_swap_reduction + $swap_reduce_size)) -le "$max_reduce" ]; then
-            reduce_size=$swap_reduce_size
-        else
-            reduce_size=$(($max_reduce - $total_swap_reduction))
-        fi
-
-        if [ "$reduce_size" -le 0 ]; then
+        if [ "$swap_reduce_size" -le 0 ]; then
             break
         fi
 
-        echo -e "${GREEN}正在减少 $reduce_size MB 的 SWAP 文件：$swap_file${NC}"
+        if [ "$current_swap_size_mb" -ge "$swap_reduce_size" ]; then
+            # 可以在当前 SWAP 文件中减少
+            new_swap_size_mb=$((current_swap_size_mb - swap_reduce_size))
 
-        # 禁用当前 SWAP 文件
-        swapoff "$swap_file" 2>/dev/null
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}错误：无法禁用 SWAP 文件 $swap_file${NC}"
-            continue
-        fi
+            echo -e "${GREEN}正在减少 SWAP 文件 $swap_file 大小为 $swap_reduce_size MB...${NC}"
 
-        # 减少 SWAP 文件大小
-        new_swap_size=$(($current_swap_size - $reduce_size))
-        if [ "$new_swap_size" -le 0 ]; then
-            # 完全禁用 SWAP 文件
-            rm "$swap_file" 2>/dev/null
-            echo -e "${YELLOW}已完全禁用并删除 SWAP 文件：$swap_file${NC}"
-            # 从 /etc/fstab 中移除
-            sed -i "/^$swap_file\s/d" /etc/fstab
-        else
-            # 调整 SWAP 文件大小
-            fallocate -l "${new_swap_size}M" "$swap_file" 2>/dev/null
+            # 禁用当前 SWAP 文件
+            swapoff "$swap_file" 2>/dev/null
             if [ $? -ne 0 ]; then
-                # 如果 fallocate 不可用，使用 dd
-                dd if=/dev/zero bs=1M count="$reduce_size" of="$swap_file" seek="$new_swap_size" conv=notrunc status=progress
+                echo -e "${RED}错误：无法禁用 SWAP 文件 $swap_file。${NC}"
+                continue
+            fi
+
+            if [ "$new_swap_size_mb" -le 0 ]; then
+                # 完全禁用 SWAP 文件
+                echo -e "${YELLOW}将完全禁用并删除 SWAP 文件 $swap_file...${NC}"
+                rm -f "$swap_file"
+                # 从 /etc/fstab 中移除
+                sed -i "/^$swap_file\s/d" /etc/fstab
+            else
+                # 创建新的 SWAP 文件大小
+                fallocate -l "${new_swap_size_mb}M" "$swap_file" 2>/dev/null
                 if [ $? -ne 0 ]; then
-                    echo -e "${RED}错误：无法调整 SWAP 文件大小 $swap_file${NC}"
+                    # fallocate 不可用，使用 dd
+                    dd if=/dev/zero bs=1M count="$new_swap_size_mb" of="$swap_file" conv=notrunc status=progress
+                    if [ $? -ne 0 ]; then
+                        echo -e "${RED}错误：无法调整 SWAP 文件大小 $swap_file。${NC}"
+                        continue
+                    fi
+                fi
+
+                # 设置正确的权限
+                chmod 600 "$swap_file"
+
+                # 格式化 SWAP 文件
+                mkswap "$swap_file" 2>/dev/null
+                if [ $? -ne 0 ]; then
+                    echo -e "${RED}错误：无法格式化 SWAP 文件 $swap_file。${NC}"
                     continue
                 fi
+
+                # 启用 SWAP 文件
+                swapon "$swap_file" 2>/dev/null
+                if [ $? -ne 0 ]; then
+                    echo -e "${RED}错误：无法启用 SWAP 文件 $swap_file。${NC}"
+                    continue
+                fi
+
+                echo -e "${GREEN}已成功减少 SWAP 文件 $swap_file 大小为 ${new_swap_size_mb} MB。${NC}"
             fi
 
-            # 设置正确的权限
-            chmod 600 "$swap_file"
-
-            # 格式化 SWAP 文件
-            mkswap "$swap_file" 2>/dev/null
-            if [ $? -ne 0 ]; then
-                echo -e "${RED}错误：无法格式化 SWAP 文件 $swap_file${NC}"
-                continue
-            fi
-
-            # 启用 SWAP 文件
-            swapon "$swap_file" 2>/dev/null
-            if [ $? -ne 0 ]; then
-                echo -e "${RED}错误：无法启用 SWAP 文件 $swap_file${NC}"
-                continue
-            fi
-
-            echo -e "${GREEN}已成功减少 $reduce_size MB 的 SWAP，当前 $swap_file 大小为 ${new_swap_size} MB。${NC}"
-        fi
-
-        # 更新总减少的 SWAP
-        total_swap_reduction=$(($total_swap_reduction + $reduce_size))
-
-        # 检查是否已达到用户要求的减少量
-        if [ "$total_swap_reduction" -ge "$swap_reduce_size" ]; then
+            # 更新总减少的 SWAP
+            total_swap_reduction=$((total_swap_reduction + swap_reduce_size))
             break
+        else
+            # 完全禁用当前 SWAP 文件
+            echo -e "${YELLOW}将完全禁用并删除 SWAP 文件 $swap_file...${NC}"
+            swapoff "$swap_file" 2>/dev/null
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}错误：无法禁用 SWAP 文件 $swap_file。${NC}"
+                continue
+            fi
+            rm -f "$swap_file"
+            sed -i "/^$swap_file\s/d" /etc/fstab
+            total_swap_reduction=$((total_swap_reduction + current_swap_size_mb))
+            swap_reduce_size=$((swap_reduce_size - current_swap_size_mb))
         fi
     done
 
     # 检查是否达到用户要求的减少量
-    if [ "$total_swap_reduction" -lt "$swap_reduce_size" ]; then
-        echo -e "${YELLOW}警告：仅减少了 $total_swap_reduction MB 的 SWAP，无法满足减少 $swap_reduce_size MB 的要求。${NC}"
-    else
+    if [ "$total_swap_reduction" -ge "$swap_reduce_size" ]; then
         echo -e "${GREEN}已成功减少 $total_swap_reduction MB 的 SWAP。${NC}"
+    else
+        echo -e "${YELLOW}警告：仅减少了 $total_swap_reduction MB 的 SWAP，无法满足减少 $swap_reduce_size MB 的要求。${NC}"
     fi
 }
 
