@@ -746,17 +746,17 @@ echo
 
 # 显示时区选择菜单
 echo -e "${PURPLE}🌐 请选择要设置的时区：${NC}"
-echo "1) ${GREEN}上海 (东八区, UTC+8)${NC}"
-echo "2) ${GREEN}纽约 (美国东部时区, UTC-5)${NC}"
-echo "3) ${GREEN}洛杉矶 (美国西部时区, UTC-8)${NC}"
-echo "4) ${GREEN}伦敦 (零时区, UTC+0)${NC}"
-echo "5) ${GREEN}东京 (东九区, UTC+9)${NC}"
-echo "6) ${GREEN}巴黎 (欧洲中部时区, UTC+1)${NC}"
-echo "7) ${GREEN}曼谷 (东七区, UTC+7)${NC}"
-echo "8) ${GREEN}悉尼 (东十区, UTC+10)${NC}"
-echo "9) ${GREEN}迪拜 (海湾标准时区, UTC+4)${NC}"
-echo "10) ${GREEN}里约热内卢 (巴西时间, UTC-3)${NC}"
-echo "11) ${YELLOW}维持当前时区${NC}"
+echo -e "1) ${GREEN}上海 (东八区, UTC+8)${NC}"
+echo -e "2) ${GREEN}纽约 (美国东部时区, UTC-5)${NC}"
+echo -e "3) ${GREEN}洛杉矶 (美国西部时区, UTC-8)${NC}"
+echo -e "4) ${GREEN}伦敦 (零时区, UTC+0)${NC}"
+echo -e "5) ${GREEN}东京 (东九区, UTC+9)${NC}"
+echo -e "6) ${GREEN}巴黎 (欧洲中部时区, UTC+1)${NC}"
+echo -e "7) ${GREEN}曼谷 (东七区, UTC+7)${NC}"
+echo -e "8) ${GREEN}悉尼 (东十区, UTC+10)${NC}"
+echo -e "9) ${GREEN}迪拜 (海湾标准时区, UTC+4)${NC}"
+echo -e "10) ${GREEN}里约热内卢 (巴西时间, UTC-3)${NC}"
+echo -e "11) ${YELLOW}维持当前时区${NC}"
 
 echo
 
