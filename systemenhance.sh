@@ -5,14 +5,14 @@
 # =============================================
 
 # ANSI颜色码
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-WHITE='\033[1;37m'
-NC='\033[0m' # 无色
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[0;34m"
+PURPLE="\033[0;35m"
+CYAN="\033[0;36m"
+WHITE="\033[1;37m"
+NC="\033[0m" # 无色
 
 # 函数：打印分隔线
 print_separator() {
@@ -43,6 +43,10 @@ if [ "$EUID" -ne 0 ]; then
     print_separator
     exit 1
 fi
+
+# 可选：日志记录（取消注释以下两行以启用日志记录）
+# LOG_FILE="/var/log/system_optimization.log"
+# exec > >(tee -a "$LOG_FILE") 2>&1
 
 # 提示用户开始操作
 print_separator
@@ -470,7 +474,7 @@ check_firewall() {
     echo
 
     # 检查新端口是否成功开放
-    if ! ss -tuln | grep -q $new_port; then
+    if ! ss -tuln | grep -q "$new_port"; then
         print_error "错误：新端口 $new_port 未成功开放，执行修复步骤..."
         echo
 
@@ -478,8 +482,8 @@ check_firewall() {
         echo -e "${GREEN}执行 systemctl daemon-reload${NC}"
         sudo systemctl daemon-reload
 
-        echo -e "${GREEN}执行 /etc/init.d/ssh restart${NC}"
-        sudo /etc/init.d/ssh restart
+        echo -e "${GREEN}执行 systemctl restart sshd${NC}"
+        sudo systemctl restart sshd
 
         echo -e "${GREEN}执行 systemctl restart ssh${NC}"
         sudo systemctl restart ssh
@@ -488,12 +492,12 @@ check_firewall() {
 
         # 再次检查新端口是否生效
         echo -e "${BLUE}检查新端口是否生效...${NC}"
-        ss -tuln | grep $new_port
+        ss -tuln | grep "$new_port"
 
         echo
 
         # 即使修复失败，也只提示，不退出，跳过当前功能块
-        if ! ss -tuln | grep -q $new_port; then
+        if ! ss -tuln | grep -q "$new_port"; then
             print_warning "警告：修复后新端口 $new_port 仍未成功开放，跳过该功能块，继续后续任务。"
         else
             print_success "新端口 $new_port 已成功开放。"
@@ -643,7 +647,7 @@ if ! sudo ufw status &>/dev/null; then
     sudo ufw enable
 fi
 
-print_success "SSH 端口已开放。"
+print_success "防火墙已启用。"
 
 # 开放新端口
 if [ -n "$new_port" ]; then
