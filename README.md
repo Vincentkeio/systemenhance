@@ -29,28 +29,10 @@
 wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/systemenhance/refs/heads/main/systemenhance.sh && sudo chmod +x /tmp/systemenhance.sh && sudo bash /tmp/systemenhance.sh
 ```
 
-**注意**：如果系统中没有 `sudo` 权限，可以移除命令中的 `sudo`，使用以下命令：
+**注意**：如果系统提示没有 `sudo` 命令，可以移除命令中的 `sudo`，使用以下命令：
 
 ```bash
 wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/systemenhance/refs/heads/main/systemenhance.sh && chmod +x /tmp/systemenhance.sh && bash /tmp/systemenhance.sh
-```
-
-### 示例
-
-#### 使用 `sudo` 的安装命令：
-
-```bash
-wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/systemenhance/refs/heads/main/systemenhance.sh \
-&& sudo chmod +x /tmp/systemenhance.sh \
-&& sudo bash /tmp/systemenhance.sh
-```
-
-#### 无 `sudo` 权限的安装命令：
-
-```bash
-wget -qO /tmp/systemenhance.sh https://raw.githubusercontent.com/Vincentkeio/systemenhance/refs/heads/main/systemenhance.sh \
-&& chmod +x /tmp/systemenhance.sh \
-&& bash /tmp/systemenhance.sh
 ```
 
 ### 贡献
