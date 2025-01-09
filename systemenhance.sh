@@ -16,24 +16,24 @@ NC="\033[0m" # 无色
 
 # 函数：打印分隔线
 print_separator() {
-    echo -e "${CYAN}============================================${NC}"
+    printf "${CYAN}============================================${NC}\n"
 }
 
 # 函数：打印带图标的信息
 print_info() {
-    echo -e "${BLUE}⚙️  $1${NC}"
+    printf "${BLUE}⚙️  $1${NC}\n"
 }
 
 print_success() {
-    echo -e "${GREEN}✔️  $1${NC}"
+    printf "${GREEN}✔️  $1${NC}\n"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    printf "${YELLOW}⚠️  $1${NC}\n"
 }
 
 print_error() {
-    echo -e "${RED}❌  $1${NC}"
+    printf "${RED}❌  $1${NC}\n"
 }
 
 # 检查是否为root用户
@@ -129,12 +129,12 @@ get_system_info
 
 # 显示系统详细信息
 print_separator
-echo -e "${PURPLE}📋 系统信息：${NC}"
-echo -e "${WHITE}操作系统 :${NC} ${GREEN}$SYSTEM_NAME${NC}"
-echo -e "${WHITE}版本号   :${NC} ${GREEN}$SYSTEM_VERSION${NC}"
-echo -e "${WHITE}代号     :${NC} ${GREEN}$SYSTEM_CODENAME${NC}"
-echo -e "${WHITE}内核版本 :${NC} ${GREEN}$KERNEL_VERSION${NC}"
-echo -e "${WHITE}系统架构 :${NC} ${GREEN}$SYSTEM_ARCH${NC}"
+printf "${PURPLE}📋 系统信息：${NC}\n"
+printf "${WHITE}操作系统 :${NC} ${GREEN}$SYSTEM_NAME${NC}\n"
+printf "${WHITE}版本号   :${NC} ${GREEN}$SYSTEM_VERSION${NC}\n"
+printf "${WHITE}代号     :${NC} ${GREEN}$SYSTEM_CODENAME${NC}\n"
+printf "${WHITE}内核版本 :${NC} ${GREEN}$KERNEL_VERSION${NC}\n"
+printf "${WHITE}系统架构 :${NC} ${GREEN}$SYSTEM_ARCH${NC}\n"
 print_separator
 echo
 
@@ -223,13 +223,13 @@ check_and_set_network_priority() {
     if [ -z "$ipv4_address" ]; then
         print_warning "提示：本机无IPv4地址。"
     else
-        echo -e "${WHITE}本机IPv4地址 :${NC} ${GREEN}$ipv4_address${NC}"
+        printf "${WHITE}本机IPv4地址 :${NC} ${GREEN}$ipv4_address${NC}\n"
     fi
 
     if [ -z "$ipv6_address" ]; then
         print_warning "提示：本机无IPv6地址。"
     else
-        echo -e "${WHITE}本机IPv6地址 :${NC} ${GREEN}$ipv6_address${NC}"
+        printf "${WHITE}本机IPv6地址 :${NC} ${GREEN}$ipv6_address${NC}\n"
     fi
 
     echo
@@ -271,12 +271,12 @@ check_and_set_network_priority() {
         else
             current_preference="未配置"
         fi
-        echo -e "${WHITE}当前系统的优先级设置 :${NC} ${GREEN}$current_preference${NC}"
+        printf "${WHITE}当前系统的优先级设置 :${NC} ${GREEN}$current_preference${NC}\n"
     else
         if [ "$ipv4_valid" == false ] && [ "$ipv6_valid" == true ]; then
             print_warning "检测到本机为IPv6 only网络环境。"
         fi
-        echo -e "${WHITE}未找到 prefer_ipv4 配置项，默认未配置优先级。${NC}"
+        printf "${WHITE}未找到 prefer_ipv4 配置项，默认未配置优先级。${NC}\n"
     fi
 
     echo
@@ -284,10 +284,10 @@ check_and_set_network_priority() {
     # 如果是双栈模式，提供选择优先级的选项
     if [ -n "$ipv4_address" ] && [ -n "$ipv6_address" ] && [ "$ipv6_valid" == true ] && [ "$ipv4_valid" == true ]; then
         print_info "本机为双栈模式，您可以选择优先使用IPv4或IPv6。"
-        echo -e "${YELLOW}请选择优先使用的协议：${NC}"
-        echo "1) ${GREEN}IPv4优先${NC}"
-        echo "2) ${GREEN}IPv6优先${NC}"
-        echo "3) ${YELLOW}取消${NC}"
+        printf "${YELLOW}请选择优先使用的协议：${NC}\n"
+        printf "1) ${GREEN}IPv4优先${NC}\n"
+        printf "2) ${GREEN}IPv6优先${NC}\n"
+        printf "3) ${YELLOW}取消${NC}\n"
         
         while true; do
             read -p "请输入选项 (1/2/3): " choice
@@ -370,7 +370,7 @@ configure_ssh_port() {
         current_port=22 # 如果未设置Port，默认值为22
     fi
 
-    echo -e "${WHITE}当前SSH端口为 :${NC} ${GREEN}$current_port${NC}"
+    printf "${WHITE}当前SSH端口为 :${NC} ${GREEN}$current_port${NC}\n"
     echo
 
     # 询问用户是否需要修改SSH端口
@@ -396,10 +396,10 @@ configure_ssh_port() {
             if grep -qE "^#?Port " "$ssh_config_file"; then
                 sed -i "s/^#\?Port .*/Port $new_port/" "$ssh_config_file"
             else
-                echo "Port $new_port" >> "$ssh_config_file"
+                printf "Port %s\n" "$new_port" | tee -a "$ssh_config_file" > /dev/null
             fi
 
-            echo -e "${WHITE}SSH 配置已更新，新的端口号为 :${NC} ${GREEN}$new_port${NC}"
+            printf "${WHITE}SSH 配置已更新，新的端口号为 :${NC} ${GREEN}$new_port${NC}\n"
         else
             print_error "错误：找不到SSH配置文件 $ssh_config_file"
             return  # 跳过当前功能块，继续执行后续部分
@@ -479,19 +479,19 @@ check_firewall() {
         echo
 
         # 执行修复步骤：重新加载配置并重启SSH服务
-        echo -e "${GREEN}执行 systemctl daemon-reload${NC}"
+        printf "${GREEN}执行 systemctl daemon-reload${NC}\n"
         sudo systemctl daemon-reload
 
-        echo -e "${GREEN}执行 systemctl restart sshd${NC}"
+        printf "${GREEN}执行 systemctl restart sshd${NC}\n"
         sudo systemctl restart sshd
 
-        echo -e "${GREEN}执行 systemctl restart ssh${NC}"
+        printf "${GREEN}执行 systemctl restart ssh${NC}\n"
         sudo systemctl restart ssh
 
         echo
 
         # 再次检查新端口是否生效
-        echo -e "${BLUE}检查新端口是否生效...${NC}"
+        printf "${BLUE}检查新端口是否生效...${NC}\n"
         ss -tuln | grep "$new_port"
 
         echo
@@ -588,10 +588,10 @@ else
         fi
         ssh_ports="22"
     else
-        echo -e "${WHITE}检测到以下 SSH 端口（不带注释的）：${NC}"
+        printf "${WHITE}检测到以下 SSH 端口（不带注释的）：${NC}\n"
         i=1
         for port in $ssh_ports; do
-            echo -e "$i) ${GREEN}$port${NC}"
+            printf "%d) ${GREEN}%s${NC}\n" "$i" "$port"
             ((i++))
         done
 
@@ -607,15 +607,15 @@ else
             exit 1
         fi
 
-        echo -e "${WHITE}您选择保留的 SSH 端口为 :${NC} ${GREEN}$selected_port${NC}"
+        printf "${WHITE}您选择保留的 SSH 端口为 :${NC} ${GREEN}%s${NC}\n" "$selected_port"
         echo
 
         # 关闭其他 SSH 端口
         i=1
         for port in $ssh_ports; do
             if [ "$port" != "$selected_port" ]; then
-                echo -e "${YELLOW}正在关闭 SSH 端口 $port...${NC}"
-                ufw deny $port/tcp
+                printf "${YELLOW}正在关闭 SSH 端口 %s...${NC}\n" "$port"
+                ufw deny "$port/tcp"
             fi
             ((i++))
         done
@@ -651,14 +651,14 @@ print_success "防火墙已启用。"
 
 # 开放新端口
 if [ -n "$new_port" ]; then
-    sudo ufw allow $new_port/tcp
-    echo -e "${WHITE}新端口 :${NC} ${GREEN}$new_port${NC} ${WHITE}已开放。${NC}"
+    sudo ufw allow "$new_port/tcp"
+    printf "${WHITE}新端口 :${NC} ${GREEN}%s${NC} ${WHITE}已开放。${NC}\n" "$new_port"
 fi
 
 # 关闭旧端口
 if [ -n "$current_port" ] && [ "$current_port" != "$new_port" ]; then
-    sudo ufw delete allow $current_port/tcp || print_warning "未找到旧端口 $current_port 的规则"
-    echo -e "${WHITE}旧端口 :${NC} ${GREEN}$current_port${NC} ${WHITE}已关闭。${NC}"
+    sudo ufw delete allow "$current_port/tcp" 2>/dev/null || print_warning "未找到旧端口 $current_port 的规则"
+    printf "${WHITE}旧端口 :${NC} ${GREEN}%s${NC} ${WHITE}已关闭。${NC}\n" "$current_port"
 else
     print_warning "提示：当前端口与新端口相同或未检测到旧端口，跳过关闭旧端口。"
 fi
@@ -670,8 +670,8 @@ echo
 
 # 开放所选的 SSH 端口
 if [ "$ssh_ports" != "22" ] && [ -n "$selected_port" ]; then
-    echo -e "${WHITE}正在开放所选的 SSH 端口 :${NC} ${GREEN}$selected_port${NC}..."
-    ufw allow $selected_port/tcp
+    printf "${WHITE}正在开放所选的 SSH 端口 :${NC} ${GREEN}%s${NC}...\n" "$selected_port"
+    ufw allow "$selected_port/tcp"
 else
     print_success "默认端口 22 已开放。"
 fi
@@ -693,9 +693,9 @@ ss -tuln | grep -E "tcp|udp" | awk '{print $5}' | cut -d: -f2 | sort | uniq | wh
 
     # 检查是否已经开放此端口
     if ! sudo ufw status | grep -qw "$port/tcp" && ! sudo ufw status | grep -qw "$port/udp"; then
-        echo -e "正在开放端口 : ${GREEN}$port${NC}..."
-        sudo ufw allow $port/tcp   # 开放 TCP 协议的端口
-        sudo ufw allow $port/udp   # 开放 UDP 协议的端口
+        printf "正在开放端口 : ${GREEN}%s${NC}...\n" "$port"
+        sudo ufw allow "$port/tcp"   # 开放 TCP 协议的端口
+        sudo ufw allow "$port/udp"   # 开放 UDP 协议的端口
     fi
 done
 
@@ -705,7 +705,7 @@ print_success "所有占用端口已成功开放。"
 print_separator
 echo
 
-echo -e "${GREEN}所有已使用的端口已开放。${NC}"
+printf "${GREEN}所有已使用的端口已开放。${NC}\n"
 echo
 
 # 启用 Fail2Ban
@@ -731,32 +731,32 @@ print_separator
 echo
 
 # 输出当前服务的防火墙状态
-echo -e "${PURPLE}📄 当前服务的防火墙状态：${NC}"
+printf "${PURPLE}📄 当前服务的防火墙状态：${NC}\n"
 sudo ufw status verbose
 echo
 
 # 检查 Fail2Ban 状态
-echo -e "${PURPLE}🔒 Fail2Ban 状态：${NC}"
+printf "${PURPLE}🔒 Fail2Ban 状态：${NC}\n"
 fail2ban-client status
 echo
 
 # 显示当前时区
-echo -e "${WHITE}当前时区是 :${NC} ${GREEN}$(timedatectl show --property=Timezone --value)${NC}"
+printf "${WHITE}当前时区是 :${NC} ${GREEN}$(timedatectl show --property=Timezone --value)${NC}\n"
 echo
 
 # 显示时区选择菜单
-echo -e "${PURPLE}🌐 请选择要设置的时区：${NC}"
-echo -e "1) ${GREEN}上海 (东八区, UTC+8)${NC}"
-echo -e "2) ${GREEN}纽约 (美国东部时区, UTC-5)${NC}"
-echo -e "3) ${GREEN}洛杉矶 (美国西部时区, UTC-8)${NC}"
-echo -e "4) ${GREEN}伦敦 (零时区, UTC+0)${NC}"
-echo -e "5) ${GREEN}东京 (东九区, UTC+9)${NC}"
-echo -e "6) ${GREEN}巴黎 (欧洲中部时区, UTC+1)${NC}"
-echo -e "7) ${GREEN}曼谷 (东七区, UTC+7)${NC}"
-echo -e "8) ${GREEN}悉尼 (东十区, UTC+10)${NC}"
-echo -e "9) ${GREEN}迪拜 (海湾标准时区, UTC+4)${NC}"
-echo -e "10) ${GREEN}里约热内卢 (巴西时间, UTC-3)${NC}"
-echo -e "11) ${YELLOW}维持当前时区${NC}"
+printf "${PURPLE}🌐 请选择要设置的时区：${NC}\n"
+printf "1) ${GREEN}上海 (东八区, UTC+8)${NC}\n"
+printf "2) ${GREEN}纽约 (美国东部时区, UTC-5)${NC}\n"
+printf "3) ${GREEN}洛杉矶 (美国西部时区, UTC-8)${NC}\n"
+printf "4) ${GREEN}伦敦 (零时区, UTC+0)${NC}\n"
+printf "5) ${GREEN}东京 (东九区, UTC+9)${NC}\n"
+printf "6) ${GREEN}巴黎 (欧洲中部时区, UTC+1)${NC}\n"
+printf "7) ${GREEN}曼谷 (东七区, UTC+7)${NC}\n"
+printf "8) ${GREEN}悉尼 (东十区, UTC+10)${NC}\n"
+printf "9) ${GREEN}迪拜 (海湾标准时区, UTC+4)${NC}\n"
+printf "10) ${GREEN}里约热内卢 (巴西时间, UTC-3)${NC}\n"
+printf "11) ${YELLOW}维持当前时区${NC}\n"
 
 echo
 
@@ -821,7 +821,7 @@ echo
 # 三、管理 SWAP
 manage_swap(){
     print_separator
-    echo -e "${PURPLE}📊 当前内存和 SWAP 使用情况：${NC}"
+    printf "${PURPLE}📊 当前内存和 SWAP 使用情况：${NC}\n"
     free -h
     print_separator
     echo
@@ -866,7 +866,7 @@ manage_swap(){
 
         # 确保 /etc/fstab 中的 SWAP 配置正确
         if ! grep -q "^$selected_swap_file\s" /etc/fstab; then
-            echo "$selected_swap_file none swap defaults 0 0" | sudo tee -a /etc/fstab > /dev/null
+            printf "%s none swap defaults 0 0\n" "$selected_swap_file" | sudo tee -a /etc/fstab > /dev/null
         fi
 
         print_success "SWAP 文件 ${selected_swap_file} 已成功调整为 ${new_swap_size} MB。"
@@ -905,7 +905,7 @@ manage_swap(){
 
         # 确保 /etc/fstab 中的 SWAP 配置正确
         if ! grep -q "^$selected_swap_partition\s" /etc/fstab; then
-            echo "$selected_swap_partition none swap defaults 0 0" | sudo tee -a /etc/fstab > /dev/null
+            printf "%s none swap defaults 0 0\n" "$selected_swap_partition" | sudo tee -a /etc/fstab > /dev/null
         fi
 
         print_success "SWAP 分区 ${selected_swap_partition} 已成功调整为 ${new_swap_size} MB。"
@@ -930,14 +930,14 @@ manage_swap(){
 
         # 添加 SWAP 文件到 /etc/fstab
         if ! grep -q "^/swapfile\s" /etc/fstab; then
-            echo "/swapfile none swap defaults 0 0" | sudo tee -a /etc/fstab > /dev/null
+            printf "/swapfile none swap defaults 0 0\n" | sudo tee -a /etc/fstab > /dev/null
         fi
 
         print_success "已成功创建并启用新的 SWAP 文件 /swapfile，大小为 ${new_swap_size} MB。"
     fi
 
     # 显示新的 SWAP 信息
-    echo -e "${PURPLE}📊 调整后的内存和 SWAP 使用情况：${NC}"
+    printf "${PURPLE}📊 调整后的内存和 SWAP 使用情况：${NC}\n"
     free -h
     print_separator
     echo
@@ -956,10 +956,10 @@ check_bbr() {
 # 显示当前的 BBR 配置和加速方案
 show_bbr_info() {
     # 显示当前的 TCP 拥塞控制算法
-    echo -e "${WHITE}当前系统的 TCP 拥塞控制算法 :${NC} ${GREEN}$(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}')${NC}"
+    printf "${WHITE}当前系统的 TCP 拥塞控制算法 :${NC} ${GREEN}$(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}')${NC}\n"
     
     # 显示当前的默认队列调度器
-    echo -e "${WHITE}当前系统的默认队列调度器     :${NC} ${GREEN}$(sysctl net.core.default_qdisc | awk '{print $3}')${NC}"
+    printf "${WHITE}当前系统的默认队列调度器     :${NC} ${GREEN}$(sysctl net.core.default_qdisc | awk '{print $3}')${NC}\n"
 }
 
 # 启用 BBR+FQ
@@ -972,7 +972,7 @@ enable_bbr_fq() {
 
     # 永久启用 BBR（在 /etc/sysctl.conf 中添加配置）
     if ! grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.conf; then
-        echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf > /dev/null
+        printf "net.ipv4.tcp_congestion_control=bbr\n" | sudo tee -a /etc/sysctl.conf > /dev/null
     fi
 
     # 启用 FQ（FQ是BBR的配套方案）
@@ -981,7 +981,7 @@ enable_bbr_fq() {
 
     # 永久启用 FQ
     if ! grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf; then
-        echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf > /dev/null
+        printf "net.core.default_qdisc=fq\n" | sudo tee -a /etc/sysctl.conf > /dev/null
     fi
 
     # 重新加载 sysctl 配置
@@ -1008,9 +1008,9 @@ else
     show_bbr_info
 
     # 询问用户是否启用 BBR+FQ
-    echo -e "${YELLOW}⚠️  BBR 未启用，您可以选择启用 BBR+FQ 加速方案：${NC}"
-    echo "1) ${GREEN}启用 BBR+FQ${NC}"
-    echo "2) ${YELLOW}不启用，跳过${NC}"
+    printf "${YELLOW}⚠️  BBR 未启用，您可以选择启用 BBR+FQ 加速方案：${NC}\n"
+    printf "1) ${GREEN}启用 BBR+FQ${NC}\n"
+    printf "2) ${YELLOW}不启用，跳过${NC}\n"
     read -p "请输入您的选择 (1 或 2): " choice
 
     if [[ "$choice" == "1" ]]; then
@@ -1063,12 +1063,12 @@ echo
 
 # 五、清理日志文件（用户选择清理时间范围）
 print_separator
-echo -e "${PURPLE}🗄️  请选择要清理的日志文件时间范围：${NC}"
-echo "1) ${GREEN}清除一周内的日志${NC}"
-echo "2) ${GREEN}清除一月内的日志${NC}"
-echo "3) ${GREEN}清除半年的日志${NC}"
-echo "4) ${GREEN}清除所有日志${NC}"
-echo "5) ${YELLOW}不用清理${NC}"
+printf "${PURPLE}🗄️  请选择要清理的日志文件时间范围：${NC}\n"
+printf "1) ${GREEN}清除一周内的日志${NC}\n"
+printf "2) ${GREEN}清除一月内的日志${NC}\n"
+printf "3) ${GREEN}清除半年的日志${NC}\n"
+printf "4) ${GREEN}清除所有日志${NC}\n"
+printf "5) ${YELLOW}不用清理${NC}\n"
 print_separator
 echo
 
@@ -1109,17 +1109,17 @@ print_success "系统优化完成！"
 print_separator
 echo
 
-echo -e "${WHITE}本次优化包括：${NC}"
-echo -e "1) ${GREEN}更新了系统并安装了常用组件（如 sudo, wget, curl, fail2ban, ufw）。${NC}"
-echo -e "2) ${GREEN}检测并配置了IPv4/IPv6环境，确保网络访问正常。${NC}"
-echo -e "3) ${GREEN}设置了SSH端口，增强了远程登录安全性。${NC}"
-echo -e "4) ${GREEN}启用了防火墙并配置了常用端口，特别是 SSH 服务端口。${NC}"
-echo -e "5) ${GREEN}启用了 Fail2Ban 防护，增强了系统安全性。${NC}"
-echo -e "6) ${GREEN}根据您的选择，已调整系统时区设置。${NC}"
-echo -e "7) ${GREEN}已调整系统 SWAP 大小。${NC}"
-echo -e "8) ${GREEN}根据您的选择，已设置BBR。${NC}"
-echo -e "9) ${GREEN}清理了系统垃圾文件和临时文件。${NC}"
-echo -e "10) ${GREEN}根据您的选择，已清理了不需要的系统日志文件。${NC}"
+printf "${WHITE}本次优化包括：${NC}\n"
+printf "1) ${GREEN}更新了系统并安装了常用组件（如 sudo, wget, curl, fail2ban, ufw）。${NC}\n"
+printf "2) ${GREEN}检测并配置了IPv4/IPv6环境，确保网络访问正常。${NC}\n"
+printf "3) ${GREEN}设置了SSH端口，增强了远程登录安全性。${NC}\n"
+printf "4) ${GREEN}启用了防火墙并配置了常用端口，特别是 SSH 服务端口。${NC}\n"
+printf "5) ${GREEN}启用了 Fail2Ban 防护，增强了系统安全性。${NC}\n"
+printf "6) ${GREEN}根据您的选择，已调整系统时区设置。${NC}\n"
+printf "7) ${GREEN}已调整系统 SWAP 大小。${NC}\n"
+printf "8) ${GREEN}根据您的选择，已设置BBR。${NC}\n"
+printf "9) ${GREEN}清理了系统垃圾文件和临时文件。${NC}\n"
+printf "10) ${GREEN}根据您的选择，已清理了不需要的系统日志文件。${NC}\n"
 echo
 
 # 询问是否重启
@@ -1136,5 +1136,5 @@ else
     print_success "系统优化完成，无需重启。"
 fi
 
-echo -e "${GREEN}所有操作已完成，系统已经优化并增强了安全性！${NC}"
-echo -e "${YELLOW}⚠️  如果修改了SSH端口，记得在SSH工具上修改为新的端口，否则无法连接。${NC}"
+printf "${GREEN}所有操作已完成，系统已经优化并增强了安全性！${NC}\n"
+printf "${YELLOW}⚠️  如果修改了SSH端口，记得在SSH工具上修改为新的端口，否则无法连接。${NC}\n"
