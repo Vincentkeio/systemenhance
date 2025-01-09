@@ -543,6 +543,7 @@ else
       fi
       ((i++))
     done
+  fi
 fi
 
 # 四、启用防火墙（UFW 或 firewalld）
@@ -777,18 +778,22 @@ case $swap_choice in
         # 禁用当前 SWAP
         sudo swapoff /swapfile
 
-        # 增加 SWAP 文件大小
-        sudo fallocate -l "${swap_add_size}M" /swapfile.new
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}错误：无法创建新的 SWAP 文件。${NC}"
+        # 获取当前SWAP文件大小（以MB为单位）
+        current_swap_size=$(swapon --show=NAME,SIZE --noheadings | grep "/swapfile" | awk '{print $2}')
+        if [ -z "$current_swap_size" ]; then
+            echo -e "${RED}错误：无法获取当前 /swapfile 的大小。${NC}"
             exit 1
         fi
 
-        # 将新创建的空间追加到现有 SWAP 文件
-        sudo dd if=/swapfile.new of=/swapfile bs=1M seek=$(stat -c%s /swapfile) count=$swap_add_size conv=notrunc
+        # 计算新的 SWAP 大小
+        new_swap_size=$((current_swap_size + swap_add_size))
 
-        # 删除临时 SWAP 文件
-        sudo rm /swapfile.new
+        # 调整 SWAP 文件大小
+        sudo fallocate -l "${new_swap_size}M" /swapfile
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}错误：无法调整 SWAP 文件大小。${NC}"
+            exit 1
+        fi
 
         # 格式化 SWAP 文件
         sudo mkswap /swapfile
@@ -797,8 +802,8 @@ case $swap_choice in
         sudo swapon /swapfile
 
         # 验证 SWAP 大小
-        new_swap_size=$(swapon --show=NAME,SIZE --noheadings | grep "/swapfile" | awk '{print $2}')
-        echo -e "${GREEN}SWAP 已增加，当前 /swapfile 大小为 ${new_swap_size} MB。${NC}"
+        updated_swap_size=$(swapon --show=NAME,SIZE --noheadings | grep "/swapfile" | awk '{print $2}')
+        echo -e "${GREEN}SWAP 已增加，当前 /swapfile 大小为 ${updated_swap_size} MB。${NC}"
     else
         echo -e "${YELLOW}未检测到 /swapfile，正在创建新的 SWAP 文件...${NC}"
         # 创建新的 SWAP 文件
