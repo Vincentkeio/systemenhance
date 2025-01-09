@@ -204,14 +204,113 @@ clean_system() {
     echo -e "${GREEN}系统垃圾清理完成${NC}"
 }
 
+# 清理系统日志
+clean_logs() {
+    echo -e "${BLUE}请选择要清理的日志文件时间范围：${NC}"
+    echo "1) 清除一周内的日志"
+    echo "2) 清除一月内的日志"
+    echo "3) 清除半年的日志"
+    echo "4) 清除所有日志"
+    echo "5) 不用清理"
+
+    read -p "请输入选项 (1/2/3/4/5): " log_choice
+
+    case $log_choice in
+        1)
+            echo -e "${GREEN}正在清除一周内的日志...${NC}"
+            find /var/log -type f -name '*.log' -mtime +7 -exec rm -f {} \;
+            ;;
+        2)
+            echo -e "${GREEN}正在清除一月内的日志...${NC}"
+            find /var/log -type f -name '*.log' -mtime +30 -exec rm -f {} \;
+            ;;
+        3)
+            echo -e "${GREEN}正在清除半年的日志...${NC}"
+            find /var/log -type f -name '*.log' -mtime +180 -exec rm -f {} \;
+            ;;
+        4)
+            echo -e "${GREEN}正在清除所有日志...${NC}"
+            find /var/log -type f -name '*.log' -exec rm -f {} \;
+            ;;
+        5)
+            echo -e "${YELLOW}不清理日志文件，跳过此步骤。${NC}"
+            ;;
+        *)
+            echo -e "${YELLOW}无效选项，跳过清理日志文件。${NC}"
+            ;;
+    esac
+    echo -e "${GREEN}日志清理完成！${NC}"
+}
+
+# 设置时区
+set_timezone() {
+    echo -e "${BLUE}请选择要设置的时区：${NC}"
+    options=("上海" "纽约" "洛杉矶" "伦敦" "东京" "巴黎" "曼谷" "悉尼" "迪拜" "里约热内卢" "维持当前时区")
+    select opt in "${options[@]}"; do
+        case $opt in
+            "上海")
+                sudo timedatectl set-timezone Asia/Shanghai
+                break
+                ;;
+            "纽约")
+                sudo timedatectl set-timezone America/New_York
+                break
+                ;;
+            "洛杉矶")
+                sudo timedatectl set-timezone America/Los_Angeles
+                break
+                ;;
+            "伦敦")
+                sudo timedatectl set-timezone Europe/London
+                break
+                ;;
+            "东京")
+                sudo timedatectl set-timezone Asia/Tokyo
+                break
+                ;;
+            "巴黎")
+                sudo timedatectl set-timezone Europe/Paris
+                break
+                ;;
+            "曼谷")
+                sudo timedatectl set-timezone Asia/Bangkok
+                break
+                ;;
+            "悉尼")
+                sudo timedatectl set-timezone Australia/Sydney
+                break
+                ;;
+            "迪拜")
+                sudo timedatectl set-timezone Asia/Dubai
+                break
+                ;;
+            "里约热内卢")
+                sudo timedatectl set-timezone America/Sao_Paulo
+                break
+                ;;
+            "维持当前时区")
+                echo -e "${YELLOW}维持当前时区，脚本将继续执行。${NC}"
+                break
+                ;;
+            *)
+                echo -e "${RED}无效选项，选择维持当前时区。${NC}"
+                break
+                ;;
+        esac
+    done
+    echo -e "${GREEN}时区设置完成！${NC}"
+}
+
 # 主程序
 get_system_info
 update_system
 install_common_packages
 configure_network_priority
+set_timezone
 configure_ssh_port
 enable_bbr
 clean_system
+clean_logs
 
 echo -e "${GREEN}系统优化完成！${NC}"
 echo -e "${YELLOW}如果修改了SSH端口，请确保在SSH工具中更新端口号。${NC}"
