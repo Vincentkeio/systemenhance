@@ -9,6 +9,8 @@ NC='\033[0m' # 无色
 
 # 初始化变量
 bbr_modified=false
+ssh_port_changed=false
+new_ssh_port=22
 
 # 检查是否为root用户
 if [ "$EUID" -ne 0 ]; then
@@ -420,7 +422,147 @@ manage_swap(){
 manage_swap
 echo
 
-# 四、启用 BBR+FQ
+# 四、设置时区
+set_timezone(){
+    echo -e "${BLUE}当前时区设置为: $(timedatectl | grep "Time zone" | awk '{print $3}')${NC}"
+    echo -e "${BLUE}可用的时区列表: ${NC}"
+    timedatectl list-timezones | less
+
+    read -p "请输入您要设置的时区（例如：Asia/Shanghai）: " timezone
+
+    if timedatectl list-timezones | grep -qw "$timezone"; then
+        timedatectl set-timezone "$timezone"
+        echo -e "${GREEN}时区已成功设置为 $timezone。${NC}"
+    else
+        echo -e "${RED}无效的时区输入。请重新运行脚本并输入正确的时区。${NC}"
+    fi
+}
+
+# 调用设置时区函数
+set_timezone
+echo
+
+# 五、修改SSH端口
+change_ssh_port(){
+    current_ssh_port=$(grep "^Port " /etc/ssh/sshd_config | awk '{print $2}')
+
+    echo -e "${BLUE}当前SSH端口: ${GREEN}$current_ssh_port${NC}"
+    read -p "请输入新的SSH端口号（默认保持当前端口: $current_ssh_port）: " new_port
+
+    # 如果用户按回车，则保持当前端口
+    if [[ -z "$new_port" ]]; then
+        echo -e "${YELLOW}保持当前SSH端口: $current_ssh_port${NC}"
+        return
+    fi
+
+    # 验证端口号是否为有效的数字且在1-65535之间
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -le 0 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "${RED}错误：请输入一个有效的端口号（1-65535）。${NC}"
+        return
+    fi
+
+    # 检查端口是否被占用
+    if ss -tuln | grep -q ":$new_port "; then
+        echo -e "${RED}错误：端口 $new_port 已被占用。${NC}"
+        return
+    fi
+
+    # 修改SSH配置文件
+    sed -i "s/^Port .*/Port $new_port/" /etc/ssh/sshd_config
+
+    # 允许新端口通过防火墙
+    if command -v ufw &>/dev/null; then
+        ufw allow "$new_port"/tcp
+        ufw delete allow "$current_ssh_port"/tcp
+    elif command -v firewall-cmd &>/dev/null; then
+        firewall-cmd --permanent --add-port="$new_port"/tcp
+        firewall-cmd --permanent --remove-port="$current_ssh_port"/tcp
+        firewall-cmd --reload
+    fi
+
+    # 重启SSH服务
+    systemctl restart sshd
+
+    echo -e "${GREEN}SSH端口已成功更改为 $new_port。${NC}"
+    ssh_port_changed=true
+}
+
+# 调用修改SSH端口函数
+change_ssh_port
+echo
+
+# 六、启用防火墙
+enable_firewall(){
+    echo -e "${BLUE}正在配置防火墙...${NC}"
+
+    if command -v ufw &>/dev/null; then
+        # 启用UFW
+        ufw enable
+        # 默认拒绝入站，允许出站
+        ufw default deny incoming
+        ufw default allow outgoing
+        # 允许SSH端口
+        if [ "$ssh_port_changed" = true ]; then
+            ufw allow "$new_port"/tcp
+        else
+            ufw allow "$current_ssh_port"/tcp
+        fi
+        echo -e "${GREEN}UFW防火墙已启用并配置完毕。${NC}"
+    elif command -v firewall-cmd &>/dev/null; then
+        # 启用firewalld
+        systemctl start firewalld
+        systemctl enable firewalld
+        # 默认拒绝入站，允许出站
+        firewall-cmd --permanent --set-default-zone=public
+        # 允许SSH端口
+        if [ "$ssh_port_changed" = true ]; then
+            firewall-cmd --permanent --add-port="$new_port"/tcp
+        else
+            firewall-cmd --permanent --add-port="$current_ssh_port"/tcp
+        fi
+        firewall-cmd --reload
+        echo -e "${GREEN}firewalld防火墙已启用并配置完毕。${NC}"
+    else
+        echo -e "${YELLOW}未检测到ufw或firewalld防火墙工具，跳过防火墙配置。${NC}"
+    fi
+}
+
+# 调用启用防火墙函数
+enable_firewall
+echo
+
+# 七、启用 Fail2Ban
+enable_fail2ban(){
+    echo -e "${BLUE}正在配置 Fail2Ban...${NC}"
+    
+    if [ -f /etc/fail2ban/jail.local ]; then
+        echo -e "${YELLOW}发现已存在 /etc/fail2ban/jail.local 配置文件，跳过创建。${NC}"
+    else
+        # 创建基本的 jail.local 配置
+        cat > /etc/fail2ban/jail.local <<EOL
+[DEFAULT]
+bantime  = 10m
+findtime  = 10m
+maxretry = 5
+
+[sshd]
+enabled = true
+port    = $(grep "^Port " /etc/ssh/sshd_config | awk '{print $2}')
+EOL
+    fi
+
+    # 重启 Fail2Ban 服务
+    systemctl restart fail2ban
+    systemctl enable fail2ban
+
+    echo -e "${GREEN}Fail2Ban 已成功启用并配置。${NC}"
+}
+
+# 调用启用 Fail2Ban 函数
+enable_fail2ban
+echo
+
+# 八、启用 BBR+FQ
 enable_bbr_fq() {
     echo -e "${BLUE}正在启用 BBR 和 FQ 加速方案...${NC}"
 
@@ -497,7 +639,7 @@ fi
 echo -e "${GREEN}继续执行脚本的其他部分...${NC}"
 echo
 
-# 五、清理系统垃圾
+# 九、清理系统垃圾
 echo -e "${BLUE}开始清理系统垃圾...${NC}"
 echo
 
@@ -525,7 +667,7 @@ find /var/tmp -type f -mtime +7 -exec rm -f {} \;
 echo -e "${GREEN}系统垃圾清理完成！${NC}"
 echo
 
-# 六、清理日志文件（用户选择清理时间范围）
+# 十、清理日志文件（用户选择清理时间范围）
 echo -e "${BLUE}请选择要清理的日志文件时间范围：${NC}"
 echo "1) 清除一周内的日志"
 echo "2) 清除一月内的日志"
@@ -563,17 +705,17 @@ esac
 echo -e "${GREEN}日志清理完成！${NC}"
 echo
 
-# 七、系统优化完成提示
+# 十一、系统优化完成提示
 echo -e "${GREEN}系统优化完成！${NC}"
 echo
 
 echo -e "本次优化包括："
 echo -e "1) ${GREEN}更新了系统并安装了常用组件（如 sudo, wget, curl, fail2ban, ufw）。${NC}"
 echo -e "2) ${GREEN}检测并配置了IPv4/IPv6环境，确保网络访问正常。${NC}"
-echo -e "3) ${GREEN}设置了SSH端口，增强了远程登录安全性。${NC}"
-echo -e "4) ${GREEN}启用了防火墙并配置了常用端口，特别是 SSH 服务端口。${NC}"
-echo -e "5) ${GREEN}启用了 Fail2Ban 防护，增强了系统安全性。${NC}"
-echo -e "6) ${GREEN}根据您的选择，已调整系统时区设置。${NC}"
+echo -e "3) ${GREEN}设置了时区。${NC}"
+echo -e "4) ${GREEN}修改了SSH端口（如果选择了修改）。${NC}"
+echo -e "5) ${GREEN}启用了防火墙并配置了常用端口，特别是SSH服务端口。${NC}"
+echo -e "6) ${GREEN}启用了 Fail2Ban 防护，增强了系统安全性。${NC}"
 echo -e "7) ${GREEN}根据您的选择，已调整或配置了 SWAP 大小。${NC}"
 echo -e "8) ${GREEN}根据您的选择，已设置BBR。${NC}"
 echo -e "9) ${GREEN}清理了系统垃圾文件和临时文件。${NC}"
@@ -589,8 +731,8 @@ if [ "$bbr_modified" = true ]; then
     else
         echo -e "${YELLOW}您选择稍后手动重启系统。${NC}"
     fi
-else
-    echo -e "${GREEN}系统优化完成，无需重启。${NC}"
+elif [ "$ssh_port_changed" = true ]; then
+    echo -e "${YELLOW}修改了SSH端口，请确保在SSH客户端中使用新的端口号连接。${NC}"
 fi
 
 echo -e "${GREEN}所有操作已完成，系统已经优化并增强了安全性！${NC}"
