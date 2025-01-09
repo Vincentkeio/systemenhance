@@ -742,22 +742,44 @@ case $swap_choice in
     # 增加 SWAP
     read -p "请输入增加的 SWAP 大小 (单位 MB): " swap_add_size
     echo -e "${BLUE}正在增加 $swap_add_size MB 的 SWAP...${NC}"
-    # 增加 SWAP 的代码逻辑
-    # 示例：增加一个 512MB 的 SWAP 文件
+    
+    # 创建 SWAP 文件
     sudo dd if=/dev/zero of=/swapfile bs=1M count=$swap_add_size
+    sudo chmod 600 /swapfile
+    
+    # 格式化 SWAP 文件
     sudo mkswap /swapfile
+    
+    # 启用 SWAP 文件
     sudo swapon /swapfile
+    
+    # 将 SWAP 文件添加到 /etc/fstab，确保重启后生效
+    if ! grep -q "/swapfile" /etc/fstab; then
+        echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
+    fi
+    
     echo -e "${GREEN}已成功增加 $swap_add_size MB 的 SWAP。${NC}"
     ;;
   2)
     # 减少 SWAP
-    read -p "请输入减少的 SWAP 大小 (单位 MB): " swap_reduce_size
-    echo -e "${BLUE}正在减少 $swap_reduce_size MB 的 SWAP...${NC}"
-    # 减少 SWAP 的代码逻辑
-    # 示例：删除或减少 SWAP 文件
-    sudo swapoff /swapfile
-    sudo rm /swapfile
-    echo -e "${GREEN}已成功减少 $swap_reduce_size MB 的 SWAP。${NC}"
+    echo -e "${BLUE}正在减少 SWAP...${NC}"
+    
+    # 禁用 SWAP 文件
+    if swapon -s | grep -q "/swapfile"; then
+        sudo swapoff /swapfile
+    fi
+    
+    # 删除 SWAP 文件
+    if [ -f "/swapfile" ]; then
+        sudo rm /swapfile
+    fi
+    
+    # 从 /etc/fstab 中移除 SWAP 配置
+    if grep -q "/swapfile" /etc/fstab; then
+        sudo sed -i '/\/swapfile/d' /etc/fstab
+    fi
+    
+    echo -e "${GREEN}已成功减少 SWAP。${NC}"
     ;;
   3)
     # 不调整 SWAP
