@@ -59,8 +59,8 @@ get_system_info() {
 
     # 5. 尝试使用 dpkg 获取系统信息
     if [[ -z "$SYSTEM_NAME" ]] && command -v dpkg &>/dev/null; then
-        SYSTEM_NAME=$(dpkg --status lsb-release | grep "Package" | awk '{print $2}')
-        SYSTEM_CODENAME=$(dpkg --status lsb-release | grep "Version" | awk '{print $2}')
+        SYSTEM_NAME=$(dpkg --status lsb-release 2>/dev/null | grep "Package" | awk '{print $2}')
+        SYSTEM_CODENAME=$(dpkg --status lsb-release 2>/dev/null | grep "Version" | awk '{print $2}')
         SYSTEM_VERSION=$SYSTEM_CODENAME
     fi
 
@@ -275,58 +275,65 @@ echo
 increase_swap() {
     read -p "请输入增加的 SWAP 大小 (单位 MB): " swap_add_size
     echo -e "${BLUE}正在增加 $swap_add_size MB 的 SWAP...${NC}"
-    
+
     # 检查 SWAP 类型
     swap_info=$(swapon --show=NAME,TYPE,SIZE --noheadings)
-    swap_file=$(echo "$swap_info" | grep 'file' | awk '{print $1}')
-    swap_partition=$(echo "$swap_info" | grep 'partition' | awk '{print $1}')
-    
-    if [ -n "$swap_file" ]; then
-        echo -e "${GREEN}当前使用的 SWAP 文件为: $swap_file${NC}"
-        
-        # 获取当前 SWAP 大小
-        current_swap_size=$(echo "$swap_info" | grep "$swap_file" | awk '{print $3}' | sed 's/M//')
-        
-        # 禁用当前 SWAP
-        echo -e "${BLUE}禁用当前 SWAP 文件...${NC}"
-        swapoff "$swap_file"
-        
-        # 增加 SWAP 文件大小
-        echo -e "${BLUE}增加 SWAP 文件大小为 $swap_add_size MB...${NC}"
-        if command -v fallocate &>/dev/null; then
-            fallocate -l "${swap_add_size}M" "$swap_file"
+    swap_files=($(echo "$swap_info" | grep 'file' | awk '{print $1}'))
+    swap_partitions=($(echo "$swap_info" | grep 'partition' | awk '{print $1}'))
+
+    # 处理所有交换文件
+    for swap_file in "${swap_files[@]}"; do
+        if [ -f "$swap_file" ]; then
+            echo -e "${GREEN}当前使用的 SWAP 文件为: $swap_file${NC}"
+
+            # 获取当前 SWAP 大小
+            current_swap_size=$(swapon --show=NAME,SIZE --noheadings | grep "$swap_file" | awk '{print $2}' | sed 's/M//')
+
+            # 禁用当前 SWAP
+            echo -e "${BLUE}禁用当前 SWAP 文件 $swap_file...${NC}"
+            swapoff "$swap_file"
+
+            # 增加 SWAP 文件大小
+            echo -e "${BLUE}增加 SWAP 文件大小为 $swap_add_size MB...${NC}"
+            if command -v fallocate &>/dev/null; then
+                fallocate -l "${swap_add_size}M" "$swap_file"
+            else
+                dd if=/dev/zero bs=1M count="$swap_add_size" >> "$swap_file"
+            fi
+
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}错误：无法增加 $swap_file 的大小。${NC}"
+                continue
+            fi
+
+            # 设置正确的权限
+            chmod 600 "$swap_file"
+
+            # 格式化 SWAP 文件
+            mkswap "$swap_file"
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}错误：无法格式化 $swap_file。${NC}"
+                continue
+            fi
+
+            # 启用 SWAP 文件
+            swapon "$swap_file"
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}错误：无法启用 $swap_file。${NC}"
+                continue
+            fi
+
+            # 验证 SWAP 是否生效
+            new_swap_total=$(swapon --show=NAME,SIZE --noheadings | grep "$swap_file" | awk '{print $2}')
+            echo -e "${GREEN}已成功增加 SWAP，当前 $swap_file 大小为 ${new_swap_total} MB。${NC}"
         else
-            dd if=/dev/zero bs=1M count=$swap_add_size >> "$swap_file"
+            echo -e "${YELLOW}警告：SWAP 文件 $swap_file 不存在，跳过。${NC}"
         fi
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}错误：无法增加 $swap_file 的大小。${NC}"
-            return
-        fi
-        
-        # 设置正确的权限
-        chmod 600 "$swap_file"
-        
-        # 格式化 SWAP 文件
-        mkswap "$swap_file"
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}错误：无法格式化 $swap_file。${NC}"
-            return
-        fi
-        
-        # 启用 SWAP 文件
-        swapon "$swap_file"
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}错误：无法启用 $swap_file。${NC}"
-            return
-        fi
-        
-        # 验证 SWAP 是否生效
-        new_swap_total=$(swapon --show=NAME,SIZE --noheadings | grep "$swap_file" | awk '{print $2}')
-        echo -e "${GREEN}已成功增加 SWAP，当前 $swap_file 大小为 ${new_swap_total} MB。${NC}"
-    elif [ -n "$swap_partition" ]; then
-        echo -e "${YELLOW}当前使用的 SWAP 是交换分区 ($swap_partition)，无法通过脚本调整大小。请手动调整。${NC}"
-    else
-        echo -e "${YELLOW}未检测到有效的 SWAP 配置，无法增加 SWAP。${NC}"
+    done
+
+    # 处理所有交换分区
+    if [ "${#swap_partitions[@]}" -gt 0 ]; then
+        echo -e "${YELLOW}当前系统使用的是交换分区，无法通过脚本增加 SWAP 大小。请手动调整。${NC}"
     fi
 }
 
@@ -334,77 +341,84 @@ increase_swap() {
 decrease_swap() {
     read -p "请输入减少的 SWAP 大小 (单位 MB): " swap_reduce_size
     echo -e "${BLUE}正在减少 $swap_reduce_size MB 的 SWAP...${NC}"
-    
+
     # 获取 SWAP 信息
     swap_info=$(swapon --show=NAME,TYPE,SIZE --noheadings)
-    swap_file=$(echo "$swap_info" | grep 'file' | awk '{print $1}')
-    swap_partition=$(echo "$swap_info" | grep 'partition' | awk '{print $1}')
-    
-    if [ -n "$swap_file" ]; then
-        echo -e "${GREEN}当前使用的 SWAP 文件为: $swap_file${NC}"
-        
-        # 获取当前 SWAP 大小
-        current_swap_size=$(echo "$swap_info" | grep "$swap_file" | awk '{print $3}' | sed 's/M//')
-        
-        # 检查输入的减少大小是否有效
-        if [ "$swap_reduce_size" -gt "$current_swap_size" ]; then
-            echo -e "${YELLOW}警告：减少的大小超过当前 SWAP 大小，将完全禁用 SWAP。${NC}"
-            swap_reduce_size=$current_swap_size
-        fi
-        
-        # 计算新的 SWAP 大小
-        new_swap_size=$((current_swap_size - swap_reduce_size))
-        
-        # 禁用当前的 SWAP
-        echo -e "${BLUE}禁用当前 SWAP 文件...${NC}"
-        swapoff "$swap_file"
-        
-        if [ "$new_swap_size" -gt 0 ]; then
-            echo -e "${BLUE}调整 SWAP 文件大小为 $new_swap_size MB...${NC}"
-            # 调整 SWAP 文件大小
-            if command -v fallocate &>/dev/null; then
-                fallocate -l "${new_swap_size}M" "$swap_file"
+    swap_files=($(echo "$swap_info" | grep 'file' | awk '{print $1}'))
+    swap_partitions=($(echo "$swap_info" | grep 'partition' | awk '{print $1}'))
+
+    # 处理所有交换文件
+    for swap_file in "${swap_files[@]}"; do
+        if [ -f "$swap_file" ]; then
+            echo -e "${GREEN}当前使用的 SWAP 文件为: $swap_file${NC}"
+
+            # 获取当前 SWAP 大小
+            current_swap_size=$(swapon --show=NAME,SIZE --noheadings | grep "$swap_file" | awk '{print $2}' | sed 's/M//')
+
+            # 检查输入的减少大小是否有效
+            if [ "$swap_reduce_size" -gt "$current_swap_size" ]; then
+                echo -e "${YELLOW}警告：减少的大小超过当前 SWAP 大小，将完全禁用 SWAP。${NC}"
+                swap_reduce_size=$current_swap_size
+            fi
+
+            # 计算新的 SWAP 大小
+            new_swap_size=$((current_swap_size - swap_reduce_size))
+
+            # 禁用当前的 SWAP
+            echo -e "${BLUE}禁用当前 SWAP 文件 $swap_file...${NC}"
+            swapoff "$swap_file"
+
+            if [ "$new_swap_size" -gt 0 ]; then
+                echo -e "${BLUE}调整 SWAP 文件大小为 $new_swap_size MB...${NC}"
+                # 调整 SWAP 文件大小
+                if command -v fallocate &>/dev/null; then
+                    fallocate -l "${new_swap_size}M" "$swap_file"
+                else
+                    dd if=/dev/zero bs=1M count="$new_swap_size" >> "$swap_file"
+                fi
+
+                if [ $? -ne 0 ]; then
+                    echo -e "${RED}错误：无法调整 $swap_file 的大小。${NC}"
+                    continue
+                fi
+
+                # 设置正确的权限
+                chmod 600 "$swap_file"
+
+                # 格式化 SWAP 文件
+                mkswap "$swap_file"
+                if [ $? -ne 0 ]; then
+                    echo -e "${RED}错误：无法格式化 $swap_file。${NC}"
+                    continue
+                fi
+
+                # 启用 SWAP 文件
+                swapon "$swap_file"
+                if [ $? -ne 0 ]; then
+                    echo -e "${RED}错误：无法启用 $swap_file。${NC}"
+                    continue
+                fi
+
+                # 验证 SWAP 是否生效
+                updated_swap_size=$(swapon --show=NAME,SIZE --noheadings | grep "$swap_file" | awk '{print $2}')
+                echo -e "${GREEN}已成功减少 SWAP，当前 $swap_file 大小为 ${updated_swap_size} MB。${NC}"
             else
-                dd if=/dev/zero bs=1M count=$new_swap_size >> "$swap_file"
+                echo -e "${YELLOW}完全禁用 SWAP 文件 $swap_file...${NC}"
+                rm "$swap_file"
+
+                # 从 /etc/fstab 中移除 SWAP 配置
+                sed -i "/$swap_file/d" /etc/fstab
+
+                echo -e "${GREEN}已完全禁用 SWAP。${NC}"
             fi
-            if [ $? -ne 0 ]; then
-                echo -e "${RED}错误：无法调整 $swap_file 的大小。${NC}"
-                return
-            fi
-            
-            # 设置正确的权限
-            chmod 600 "$swap_file"
-            
-            # 格式化 SWAP 文件
-            mkswap "$swap_file"
-            if [ $? -ne 0 ]; then
-                echo -e "${RED}错误：无法格式化 $swap_file。${NC}"
-                return
-            fi
-            
-            # 启用 SWAP 文件
-            swapon "$swap_file"
-            if [ $? -ne 0 ]; then
-                echo -e "${RED}错误：无法启用 $swap_file。${NC}"
-                return
-            fi
-            
-            # 验证 SWAP 是否生效
-            updated_swap_size=$(swapon --show=NAME,SIZE --noheadings | grep "$swap_file" | awk '{print $2}')
-            echo -e "${GREEN}已成功减少 SWAP，当前 $swap_file 大小为 ${updated_swap_size} MB。${NC}"
         else
-            echo -e "${YELLOW}完全禁用 SWAP 文件...${NC}"
-            rm "$swap_file"
-            
-            # 从 /etc/fstab 中移除 SWAP 配置
-            sed -i "/$swap_file/d" /etc/fstab
-            
-            echo -e "${GREEN}已完全禁用 SWAP。${NC}"
+            echo -e "${YELLOW}警告：SWAP 文件 $swap_file 不存在，跳过。${NC}"
         fi
-    elif [ -n "$swap_partition" ]; then
-        echo -e "${YELLOW}当前使用的 SWAP 是交换分区 ($swap_partition)，无法通过脚本调整大小。请手动调整。${NC}"
-    else
-        echo -e "${RED}未检测到有效的 SWAP 配置。${NC}"
+    done
+
+    # 处理所有交换分区
+    if [ "${#swap_partitions[@]}" -gt 0 ]; then
+        echo -e "${YELLOW}当前系统使用的是交换分区，无法通过脚本减少 SWAP 大小。请手动调整。${NC}"
     fi
 }
 
@@ -506,6 +520,12 @@ configure_ssh_port() {
       return  # 跳过当前功能块，继续执行后续部分
     fi
 
+    # 检查新端口是否已被使用
+    if ss -tuln | grep -q ":$new_port "; then
+      echo -e "${RED}错误：端口 $new_port 已被占用，请选择其他端口。${NC}"
+      return
+    fi
+
     # 修改sshd_config文件
     ssh_config_file="/etc/ssh/sshd_config"
     if [ -f "$ssh_config_file" ]; then
@@ -555,6 +575,11 @@ check_firewall() {
   local new_port=$1
   local old_port=$2
 
+  # 如果新端口为空，则默认使用22
+  if [ -z "$new_port" ]; then
+    new_port=22
+  fi
+
   if command -v ufw >/dev/null 2>&1; then
     # ufw防火墙启用检查
     if ! ufw status | grep -q "Status: active"; then
@@ -588,7 +613,7 @@ check_firewall() {
   fi
 
   # 检查新端口是否成功开放
-  if ! ss -tuln | grep -q "$new_port"; then
+  if ! ss -tuln | grep -q ":$new_port "; then
     echo -e "${RED}错误：新端口 $new_port 未成功开放，执行修复步骤...${NC}"
     
     # 执行修复步骤：重新加载配置并重启SSH服务
@@ -603,10 +628,10 @@ check_firewall() {
 
     # 再次检查新端口是否生效
     echo -e "检查新端口是否生效..."
-    ss -tuln | grep "$new_port"
+    ss -tuln | grep -q ":$new_port "
 
     # 即使修复失败，也只提示，不退出，跳过当前功能块
-    if ! ss -tuln | grep -q "$new_port"; then
+    if ! ss -tuln | grep -q ":$new_port "; then
       echo -e "${YELLOW}警告：修复后新端口 $new_port 仍未成功开放，跳过该功能块，继续后续任务。${NC}"
     else
       echo -e "${GREEN}新端口 $new_port 已成功开放。${NC}"
@@ -615,7 +640,7 @@ check_firewall() {
     echo -e "${GREEN}新端口 $new_port 已成功开放。${NC}"
   fi
 
-  # 关闭旧端口
+  # 关闭旧端口（如果存在且不同于新端口）
   if [ -n "$old_port" ] && [ "$old_port" != "$new_port" ] && [ "$old_port" != "22" ]; then
     echo -e "${BLUE}正在关闭旧端口 $old_port...${NC}"
     if command -v ufw &>/dev/null; then
