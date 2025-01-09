@@ -762,24 +762,48 @@ case $swap_choice in
     ;;
   2)
     # 减少 SWAP
-    echo -e "${BLUE}正在减少 SWAP...${NC}"
+    read -p "请输入减少的 SWAP 大小 (单位 MB): " swap_reduce_size
+    echo -e "${BLUE}正在减少 $swap_reduce_size MB 的 SWAP...${NC}"
     
-    # 禁用 SWAP 文件
-    if swapon -s | grep -q "/swapfile"; then
-        sudo swapoff /swapfile
+    # 获取当前 SWAP 大小
+    current_swap_size=$(free -m | grep Swap | awk '{print $2}')
+    
+    # 检查输入的减少大小是否有效
+    if [ "$swap_reduce_size" -gt "$current_swap_size" ]; then
+        echo -e "${YELLOW}警告：减少的大小超过当前 SWAP 大小，将完全禁用 SWAP。${NC}"
+        swap_reduce_size=$current_swap_size
     fi
     
-    # 删除 SWAP 文件
-    if [ -f "/swapfile" ]; then
+    # 计算新的 SWAP 大小
+    new_swap_size=$((current_swap_size - swap_reduce_size))
+    
+    # 禁用当前的 SWAP
+    sudo swapoff /swapfile
+    
+    # 如果新的 SWAP 大小大于 0，则调整 SWAP 文件大小
+    if [ "$new_swap_size" -gt 0 ]; then
+        # 调整 SWAP 文件大小
+        sudo dd if=/dev/zero of=/swapfile bs=1M count=$new_swap_size
+        sudo chmod 600 /swapfile
+        
+        # 格式化 SWAP 文件
+        sudo mkswap /swapfile
+        
+        # 启用 SWAP 文件
+        sudo swapon /swapfile
+        
+        echo -e "${GREEN}已成功减少 $swap_reduce_size MB 的 SWAP，当前 SWAP 大小为 $new_swap_size MB。${NC}"
+    else
+        # 如果新的 SWAP 大小为 0，则删除 SWAP 文件
         sudo rm /swapfile
+        
+        # 从 /etc/fstab 中移除 SWAP 配置
+        if grep -q "/swapfile" /etc/fstab; then
+            sudo sed -i '/\/swapfile/d' /etc/fstab
+        fi
+        
+        echo -e "${GREEN}已完全禁用 SWAP。${NC}"
     fi
-    
-    # 从 /etc/fstab 中移除 SWAP 配置
-    if grep -q "/swapfile" /etc/fstab; then
-        sudo sed -i '/\/swapfile/d' /etc/fstab
-    fi
-    
-    echo -e "${GREEN}已成功减少 SWAP。${NC}"
     ;;
   3)
     # 不调整 SWAP
