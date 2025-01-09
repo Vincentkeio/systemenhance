@@ -82,7 +82,7 @@ get_system_info() {
     fi
 
     # 9. 如果没有获取到系统信息，退出
-    if [[ -z "$SYSTEM_NAME" || -z "$SYSTEM_CODENAME" || -z "$SYSTEM_VERSION" ]]; then
+    if [[ -z "$SYSTEM_NAME" || -z "$SYSTEM_VERSION" ]]; then
         echo -e "${RED}无法获取系统信息${NC}"
         exit 1
     fi
@@ -271,14 +271,182 @@ echo
 echo -e "${GREEN}继续执行后续脚本...${NC}"
 echo
 
+# 函数：增加 SWAP
+increase_swap() {
+    read -p "请输入增加的 SWAP 大小 (单位 MB): " swap_add_size
+    echo -e "${BLUE}正在增加 $swap_add_size MB 的 SWAP...${NC}"
+    
+    # 检查 SWAP 类型
+    swap_info=$(swapon --show=NAME,TYPE,SIZE --noheadings)
+    swap_file=$(echo "$swap_info" | grep 'file' | awk '{print $1}')
+    swap_partition=$(echo "$swap_info" | grep 'partition' | awk '{print $1}')
+    
+    if [ -n "$swap_file" ]; then
+        echo -e "${GREEN}当前使用的 SWAP 文件为: $swap_file${NC}"
+        
+        # 获取当前 SWAP 大小
+        current_swap_size=$(echo "$swap_info" | grep "$swap_file" | awk '{print $3}' | sed 's/M//')
+        
+        # 禁用当前 SWAP
+        echo -e "${BLUE}禁用当前 SWAP 文件...${NC}"
+        swapoff "$swap_file"
+        
+        # 增加 SWAP 文件大小
+        echo -e "${BLUE}增加 SWAP 文件大小为 $swap_add_size MB...${NC}"
+        if command -v fallocate &>/dev/null; then
+            fallocate -l "${swap_add_size}M" "$swap_file"
+        else
+            dd if=/dev/zero bs=1M count=$swap_add_size >> "$swap_file"
+        fi
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}错误：无法增加 $swap_file 的大小。${NC}"
+            return
+        fi
+        
+        # 设置正确的权限
+        chmod 600 "$swap_file"
+        
+        # 格式化 SWAP 文件
+        mkswap "$swap_file"
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}错误：无法格式化 $swap_file。${NC}"
+            return
+        fi
+        
+        # 启用 SWAP 文件
+        swapon "$swap_file"
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}错误：无法启用 $swap_file。${NC}"
+            return
+        fi
+        
+        # 验证 SWAP 是否生效
+        new_swap_total=$(swapon --show=NAME,SIZE --noheadings | grep "$swap_file" | awk '{print $2}')
+        echo -e "${GREEN}已成功增加 SWAP，当前 $swap_file 大小为 ${new_swap_total} MB。${NC}"
+    elif [ -n "$swap_partition" ]; then
+        echo -e "${YELLOW}当前使用的 SWAP 是交换分区 ($swap_partition)，无法通过脚本调整大小。请手动调整。${NC}"
+    else
+        echo -e "${YELLOW}未检测到有效的 SWAP 配置，无法增加 SWAP。${NC}"
+    fi
+}
+
+# 函数：减少 SWAP
+decrease_swap() {
+    read -p "请输入减少的 SWAP 大小 (单位 MB): " swap_reduce_size
+    echo -e "${BLUE}正在减少 $swap_reduce_size MB 的 SWAP...${NC}"
+    
+    # 获取 SWAP 信息
+    swap_info=$(swapon --show=NAME,TYPE,SIZE --noheadings)
+    swap_file=$(echo "$swap_info" | grep 'file' | awk '{print $1}')
+    swap_partition=$(echo "$swap_info" | grep 'partition' | awk '{print $1}')
+    
+    if [ -n "$swap_file" ]; then
+        echo -e "${GREEN}当前使用的 SWAP 文件为: $swap_file${NC}"
+        
+        # 获取当前 SWAP 大小
+        current_swap_size=$(echo "$swap_info" | grep "$swap_file" | awk '{print $3}' | sed 's/M//')
+        
+        # 检查输入的减少大小是否有效
+        if [ "$swap_reduce_size" -gt "$current_swap_size" ]; then
+            echo -e "${YELLOW}警告：减少的大小超过当前 SWAP 大小，将完全禁用 SWAP。${NC}"
+            swap_reduce_size=$current_swap_size
+        fi
+        
+        # 计算新的 SWAP 大小
+        new_swap_size=$((current_swap_size - swap_reduce_size))
+        
+        # 禁用当前的 SWAP
+        echo -e "${BLUE}禁用当前 SWAP 文件...${NC}"
+        swapoff "$swap_file"
+        
+        if [ "$new_swap_size" -gt 0 ]; then
+            echo -e "${BLUE}调整 SWAP 文件大小为 $new_swap_size MB...${NC}"
+            # 调整 SWAP 文件大小
+            if command -v fallocate &>/dev/null; then
+                fallocate -l "${new_swap_size}M" "$swap_file"
+            else
+                dd if=/dev/zero bs=1M count=$new_swap_size >> "$swap_file"
+            fi
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}错误：无法调整 $swap_file 的大小。${NC}"
+                return
+            fi
+            
+            # 设置正确的权限
+            chmod 600 "$swap_file"
+            
+            # 格式化 SWAP 文件
+            mkswap "$swap_file"
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}错误：无法格式化 $swap_file。${NC}"
+                return
+            fi
+            
+            # 启用 SWAP 文件
+            swapon "$swap_file"
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}错误：无法启用 $swap_file。${NC}"
+                return
+            fi
+            
+            # 验证 SWAP 是否生效
+            updated_swap_size=$(swapon --show=NAME,SIZE --noheadings | grep "$swap_file" | awk '{print $2}')
+            echo -e "${GREEN}已成功减少 SWAP，当前 $swap_file 大小为 ${updated_swap_size} MB。${NC}"
+        else
+            echo -e "${YELLOW}完全禁用 SWAP 文件...${NC}"
+            rm "$swap_file"
+            
+            # 从 /etc/fstab 中移除 SWAP 配置
+            sed -i "/$swap_file/d" /etc/fstab
+            
+            echo -e "${GREEN}已完全禁用 SWAP。${NC}"
+        fi
+    elif [ -n "$swap_partition" ]; then
+        echo -e "${YELLOW}当前使用的 SWAP 是交换分区 ($swap_partition)，无法通过脚本调整大小。请手动调整。${NC}"
+    else
+        echo -e "${RED}未检测到有效的 SWAP 配置。${NC}"
+    fi
+}
+
+# 函数：增加或减少 SWAP
+manage_swap() {
+    echo -e "${BLUE}请选择操作：${NC}"
+    echo "1) 增加 SWAP"
+    echo "2) 减少 SWAP"
+    echo "3) 不调整 SWAP"
+    read -p "请输入选项 (1/2/3): " swap_choice
+
+    case $swap_choice in
+      1)
+        # 增加 SWAP
+        increase_swap
+        ;;
+      2)
+        # 减少 SWAP
+        decrease_swap
+        ;;
+      3)
+        # 不调整 SWAP
+        echo -e "${YELLOW}您选择不调整 SWAP。${NC}"
+        ;;
+      *)
+        echo -e "${YELLOW}无效选项，退出程序。${NC}"
+        ;;
+    esac
+}
+
+# 调用 SWAP 管理函数
+manage_swap
+echo
+
 # 检查SSH服务是否安装并运行
 check_ssh_service() {
-  echo -e "${BLUE}现在开始检测SSH端口...${NC}"
+  echo -e "${BLUE}现在开始检测SSH服务...${NC}"
   echo
 
   if ! systemctl is-active --quiet ssh && ! systemctl is-active --quiet sshd; then
     echo -e "${YELLOW}未检测到SSH服务。${NC}"
-    read -p "是否需要启动并设置SSH服务并更改端口号（y/n）？" choice
+    read -p "是否需要安装并设置SSH服务并更改端口号（y/n）？" choice
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
       install_ssh
       configure_ssh_port
@@ -292,26 +460,26 @@ check_ssh_service() {
 
 # 安装并启动SSH服务
 install_ssh() {
-  if [[ "$os_type" == "ubuntu" || "$os_type" == "debian" ]]; then
+  if [[ "$SYSTEM_NAME" == "Ubuntu" || "$SYSTEM_NAME" == "Debian" ]]; then
     # Ubuntu/Debian 系统
     if ! systemctl is-active --quiet ssh; then
-      echo -e "${YELLOW}SSH 服务未安装或未启动，正在安装 SSH 服务...${NC}"
+      echo -e "${YELLOW}SSH服务未安装或未启动，正在安装SSH服务...${NC}"
       apt update && apt install -y openssh-server
       systemctl enable ssh
       systemctl start ssh
-      echo -e "${GREEN}SSH 服务已安装并启动！${NC}"
+      echo -e "${GREEN}SSH服务已安装并启动！${NC}"
     fi
-  elif [[ "$os_type" == "centos" || "$os_type" == "rhel" ]]; then
+  elif [[ "$SYSTEM_NAME" == "CentOS" || "$SYSTEM_NAME" == "RedHat" || "$SYSTEM_NAME" == "RHEL" ]]; then
     # CentOS/RHEL 系统
     if ! systemctl is-active --quiet sshd; then
-      echo -e "${YELLOW}SSH 服务未安装或未启动，正在安装 SSH 服务...${NC}"
+      echo -e "${YELLOW}SSH服务未安装或未启动，正在安装SSH服务...${NC}"
       yum install -y openssh-server
       systemctl enable sshd
       systemctl start sshd
-      echo -e "${GREEN}SSH 服务已安装并启动！${NC}"
+      echo -e "${GREEN}SSH服务已安装并启动！${NC}"
     fi
   else
-    echo -e "${RED}无法识别的操作系统：$os_type，无法处理 SSH 服务。${NC}"
+    echo -e "${RED}无法识别的操作系统：$SYSTEM_NAME，无法处理SSH服务。${NC}"
     return  # 跳过当前功能块，继续执行后续部分
   fi
 }
@@ -351,7 +519,7 @@ configure_ssh_port() {
         echo "Port $new_port" >> "$ssh_config_file"
       fi
 
-      echo -e "SSH 配置已更新，新的端口号为: ${GREEN}$new_port${NC}"
+      echo -e "SSH配置已更新，新的端口号为: ${GREEN}$new_port${NC}"
     else
       echo -e "${RED}错误：找不到SSH配置文件 $ssh_config_file${NC}"
       return  # 跳过当前功能块，继续执行后续部分
@@ -359,7 +527,7 @@ configure_ssh_port() {
 
     # 检查修改后的配置是否生效
     current_port_in_ssh_config=$(grep "^Port " "$ssh_config_file" | awk '{print $2}')
-    
+
     if [ "$current_port_in_ssh_config" -eq "$new_port" ]; then
       echo -e "SSH端口修改成功，新端口为 ${GREEN}$new_port${NC}"
     else
@@ -379,19 +547,22 @@ configure_ssh_port() {
   fi
 
   # 检查新端口是否在防火墙中开放
-  check_firewall
+  check_firewall "$new_port" "$current_port"
 }
 
 # 检查防火墙并开放新端口
 check_firewall() {
+  local new_port=$1
+  local old_port=$2
+
   if command -v ufw >/dev/null 2>&1; then
     # ufw防火墙启用检查
-    if ! sudo ufw status | grep -q "Status: active"; then
+    if ! ufw status | grep -q "Status: active"; then
       echo -e "${YELLOW}防火墙未启用，且新端口未被防火墙阻拦。${NC}"
     else
       # 检查新端口是否已在防火墙规则中放行
-      if ! sudo ufw status | grep -q "$new_port/tcp"; then
-        sudo ufw allow $new_port/tcp
+      if ! ufw status | grep -q "$new_port/tcp"; then
+        ufw allow "$new_port/tcp"
         echo -e "${GREEN}防火墙已启用，新端口已添加放行规则。${NC}"
       else
         echo -e "${GREEN}新端口已开放，防火墙规则已放行该端口。${NC}"
@@ -399,13 +570,13 @@ check_firewall() {
     fi
   elif command -v firewall-cmd >/dev/null 2>&1; then
     # firewalld防火墙启用检查
-    if ! sudo systemctl is-active --quiet firewalld; then
+    if ! systemctl is-active --quiet firewalld; then
       echo -e "${YELLOW}防火墙未启用，且新端口未被防火墙阻拦。${NC}"
     else
       # 检查新端口是否已在防火墙规则中放行
-      if ! sudo firewall-cmd --list-all | grep -q "$new_port/tcp"; then
-        sudo firewall-cmd --permanent --add-port=$new_port/tcp
-        sudo firewall-cmd --reload
+      if ! firewall-cmd --list-all | grep -q "$new_port/tcp"; then
+        firewall-cmd --permanent --add-port="$new_port/tcp"
+        firewall-cmd --reload
         echo -e "${GREEN}防火墙已启用，新端口已添加放行规则。${NC}"
       else
         echo -e "${GREEN}新端口已开放，防火墙规则已放行该端口。${NC}"
@@ -422,13 +593,13 @@ check_firewall() {
     
     # 执行修复步骤：重新加载配置并重启SSH服务
     echo -e "执行 ${GREEN}systemctl daemon-reload${NC}"
-    sudo systemctl daemon-reload
+    systemctl daemon-reload
 
     echo -e "执行 ${GREEN}/etc/init.d/ssh restart${NC}"
-    sudo /etc/init.d/ssh restart
+    /etc/init.d/ssh restart
 
     echo -e "执行 ${GREEN}systemctl restart ssh${NC}"
-    sudo systemctl restart ssh
+    systemctl restart ssh
 
     # 再次检查新端口是否生效
     echo -e "检查新端口是否生效..."
@@ -437,394 +608,53 @@ check_firewall() {
     # 即使修复失败，也只提示，不退出，跳过当前功能块
     if ! ss -tuln | grep -q "$new_port"; then
       echo -e "${YELLOW}警告：修复后新端口 $new_port 仍未成功开放，跳过该功能块，继续后续任务。${NC}"
+    else
+      echo -e "${GREEN}新端口 $new_port 已成功开放。${NC}"
     fi
   else
     echo -e "${GREEN}新端口 $new_port 已成功开放。${NC}"
   fi
+
+  # 关闭旧端口
+  if [ -n "$old_port" ] && [ "$old_port" != "$new_port" ] && [ "$old_port" != "22" ]; then
+    echo -e "${BLUE}正在关闭旧端口 $old_port...${NC}"
+    if command -v ufw &>/dev/null; then
+      ufw deny "$old_port/tcp"
+    elif command -v firewall-cmd &>/dev/null; then
+      firewall-cmd --permanent --remove-port="$old_port/tcp"
+      firewall-cmd --reload
+    elif command -v iptables &>/dev/null; then
+      iptables -A INPUT -p tcp --dport "$old_port" -j DROP
+      service iptables save
+      service iptables restart
+    fi
+    echo -e "${GREEN}旧端口 $old_port 已关闭。${NC}"
+  fi
 }
 
-# 调用检查SSH服务函数
-check_ssh_service
-echo
+# 函数：启用 BBR+FQ
+enable_bbr_fq() {
+    echo -e "${BLUE}正在启用 BBR 和 FQ 加速方案...${NC}"
 
-# 检测 SSH 服务是否启用的方法
-echo -e "${BLUE}正在检测 SSH 服务状态...${NC}"
-echo
+    # 启用 BBR
+    sysctl -w net.ipv4.tcp_congestion_control=bbr
 
-# 使用 systemctl 检测 SSH 服务
-if systemctl is-active --quiet sshd; then
-  ssh_status="enabled"
-else
-  # 如果 systemctl 检测失败，检查 sshd 进程是否存在
-  if pgrep -x "sshd" > /dev/null; then
-    ssh_status="enabled (via process)"
-  else
-    ssh_status="disabled"
-  fi
-fi
+    # 启用 FQ（FQ是BBR的配套方案）
+    sysctl -w net.core.default_qdisc=fq
 
-if [ "$ssh_status" == "disabled" ]; then
-  echo -e "${YELLOW}当前未启用 SSH 服务，跳过检查端口的步骤。${NC}"
-  echo -e "${RED}注意：如果继续执行脚本，可能会导致所有 SSH 端口关闭，进而无法通过 SSH 登录系统。${NC}"
-  read -p "您确定要继续吗？（继续请输入 y，取消请输入 n）： " choice
-  if [[ "$choice" != "y" && "$choice" != "Y" ]]; then
-    echo -e "${RED}脚本执行已取消。${NC}"
-    exit 1
-  fi
-else
-  # 检测当前所有的 SSH 服务端口
-  echo -e "${BLUE}正在检测当前 SSH 服务端口...${NC}"
-  echo
-
-  # 尝试从 SSH 配置文件中获取端口，忽略带注释的行
-  ssh_config_file="/etc/ssh/sshd_config"
-  if [ ! -f "$ssh_config_file" ]; then
-    echo -e "${RED}错误：找不到 SSH 配置文件 $ssh_config_file${NC}"
-    exit 1
-  fi
-
-  # 提取配置文件中的所有不带注释的 Port 设置，去除注释和空行
-  ssh_ports=$(grep -E "^\s*Port\s+" "$ssh_config_file" | grep -v '^#' | awk '{print $2}' | sort | uniq)
-
-  # 如果配置文件中没有找到端口，则默认使用 22
-  if [ -z "$ssh_ports" ]; then
-    echo -e "${YELLOW}未在 SSH 配置文件中找到端口设置，默认端口为 22。${NC}"
-    read -p "是否继续执行脚本？（继续请输入 y，取消请输入 n）： " choice
-    if [[ "$choice" != "y" && "$choice" != "Y" ]]; then
-      echo -e "${RED}脚本执行已取消。${NC}"
-      exit 1
+    # 永久启用 BBR 和 FQ（在 /etc/sysctl.conf 中添加配置）
+    if ! grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.conf; then
+        echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
     fi
-    ssh_ports="22"
-  else
-    echo -e "检测到以下 SSH 端口（不带注释的）："
-    i=1
-    for port in $ssh_ports; do
-      echo -e "$i) $port"
-      ((i++))
-    done
-
-    # 提示用户选择要保留的端口
-    read -p "请输入端口号的序号（例如 1, 2, 3...）： " selected_option
-
-    # 获取选择的端口
-    selected_port=$(echo "$ssh_ports" | sed -n "${selected_option}p")
-
-    # 检查输入的端口是否有效
-    if [ -z "$selected_port" ]; then
-      echo -e "${RED}错误：所选端口无效，脚本退出。${NC}"
-      exit 1
+    if ! grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf; then
+        echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     fi
 
-    echo -e "您选择保留的 SSH 端口为: ${GREEN}$selected_port${NC}"
-    
-    # 关闭其他 SSH 端口
-    i=1
-    for port in $ssh_ports; do
-      if [ "$port" != "$selected_port" ]; then
-        echo -e "正在关闭 SSH 端口 $port..."
-        if command -v ufw &>/dev/null; then
-          ufw deny "$port/tcp"
-        elif command -v firewall-cmd &>/dev/null; then
-          firewall-cmd --permanent --remove-port="$port/tcp"
-          firewall-cmd --reload
-        elif command -v iptables &>/dev/null; then
-          iptables -A INPUT -p tcp --dport "$port" -j DROP
-          service iptables save
-          service iptables restart
-        fi
-      fi
-      ((i++))
-    done
-  fi
-fi
+    # 重新加载 sysctl 配置
+    sysctl -p
 
-# 四、启用防火墙（UFW 或 firewalld）
-echo -e "${BLUE}正在检查并启用防火墙...${NC}"
-echo
-
-# 检查是否安装了ufw
-if ! command -v ufw &>/dev/null; then
-  echo -e "${YELLOW}未检测到 ufw，正在安装 ufw...${NC}"
-  if command -v apt &>/dev/null; then
-    # Ubuntu 或 Debian 系统
-    apt update
-    apt install -y ufw
-  elif command -v yum &>/dev/null; then
-    # CentOS 或 RHEL 系统
-    yum install -y ufw
-  fi
-fi
-
-# 确保ufw防火墙启用
-if ! sudo ufw status &>/dev/null; then
-  echo -e "${YELLOW}正在启用 ufw 防火墙...${NC}"
-  sudo ufw enable
-fi
-
-# 开放SSH端口
-if [ -n "$selected_port" ]; then
-  echo -e "${BLUE}正在开放 SSH 端口 $selected_port...${NC}"
-  sudo ufw allow "$selected_port/tcp"
-else
-  echo -e "${BLUE}正在开放默认 SSH 端口 22...${NC}"
-  sudo ufw allow ssh
-fi
-echo -e "${GREEN}SSH 端口已开放。${NC}"
-
-# 开放新端口（如果有）
-if [ -n "$new_port" ]; then
-  echo -e "${BLUE}正在开放新端口 $new_port...${NC}"
-  sudo ufw allow "$new_port/tcp"
-  echo -e "新端口 $new_port 已开放。"
-  
-  # 关闭旧端口
-  if [ -n "$current_port" ] && [ "$current_port" != "$selected_port" ]; then
-    echo -e "${BLUE}正在关闭旧端口 $current_port...${NC}"
-    sudo ufw delete allow "$current_port/tcp" || echo -e "${YELLOW}警告：未找到旧端口 $current_port 的规则${NC}"
-    echo -e "旧端口 $current_port 已关闭。"
-  fi
-
-  # 重新加载防火墙规则
-  sudo ufw reload
-  echo -e "${GREEN}防火墙规则已重新加载。${NC}"
-fi
-
-# 检测其他常用服务的端口并开放
-echo -e "${BLUE}正在检测并开放常用服务端口...${NC}"
-echo
-
-# 使用 ss 或 netstat 检测所有监听的端口
-ss -tuln | grep -E "tcp|udp" | awk '{print $5}' | cut -d: -f2 | sort | uniq | while read port; do
-  # 跳过端口为空或不存在的情况
-  if [ -z "$port" ]; then
-    continue
-  fi
-
-  # 检查是否已经开放此端口
-  if ! sudo ufw status | grep -q "$port"; then
-    echo -e "正在开放端口 $port..."
-    sudo ufw allow "$port/tcp"   # 开放 TCP 协议的端口
-    sudo ufw allow "$port/udp"   # 开放 UDP 协议的端口
-  fi
-done
-
-# 重新加载防火墙规则，确保更改生效
-sudo ufw reload
-echo -e "${GREEN}所有占用端口已成功开放。${NC}"
-
-echo -e "${GREEN}所有已使用的端口已开放。${NC}"
-echo
-
-# 启用 Fail2Ban
-echo -e "${BLUE}正在启用 Fail2Ban...${NC}"
-systemctl enable fail2ban
-systemctl start fail2ban
-echo -e "${GREEN}Fail2Ban 启用成功。${NC}"
-
-# 确保防火墙规则生效
-sudo ufw reload
-echo -e "${GREEN}防火墙规则已重新加载。${NC}"
-
-# 完成提示
-echo -e "${GREEN}脚本执行完成！${NC}"
-echo
-
-# 输出当前服务的防火墙状态
-echo -e "${BLUE}当前服务的防火墙状态：${NC}"
-ufw status verbose
-echo
-
-# 检查 Fail2Ban 状态
-echo -e "${BLUE}Fail2Ban 状态：${NC}"
-fail2ban-client status
-echo
-
-# 显示当前时区
-echo -e "${BLUE}当前时区是：$(timedatectl show --property=Timezone --value)${NC}"
-echo
-
-# 显示时区选择菜单
-echo -e "${BLUE}请选择要设置的时区：${NC}"
-echo "1) 上海 (东八区, UTC+8)"
-echo "2) 纽约 (美国东部时区, UTC-5)"
-echo "3) 洛杉矶 (美国西部时区, UTC-8)"
-echo "4) 伦敦 (零时区, UTC+0)"
-echo "5) 东京 (东九区, UTC+9)"
-echo "6) 巴黎 (欧洲中部时区, UTC+1)"
-echo "7) 曼谷 (东七区, UTC+7)"
-echo "8) 悉尼 (东十区, UTC+10)"
-echo "9) 迪拜 (海湾标准时区, UTC+4)"
-echo "10) 里约热内卢 (巴西时间, UTC-3)"
-echo "11) 维持当前时区"
-
-# 获取用户输入
-read -p "请输入选项 (1/2/3/4/5/6/7/8/9/10/11): " timezone_choice
-
-# 根据用户选择设置时区
-case $timezone_choice in
-  1)
-    echo -e "${BLUE}正在设置时区为 上海 (东八区, UTC+8)...${NC}"
-    sudo timedatectl set-timezone Asia/Shanghai
-    ;;
-  2)
-    echo -e "${BLUE}正在设置时区为 纽约 (美国东部时区, UTC-5)...${NC}"
-    sudo timedatectl set-timezone America/New_York
-    ;;
-  3)
-    echo -e "${BLUE}正在设置时区为 洛杉矶 (美国西部时区, UTC-8)...${NC}"
-    sudo timedatectl set-timezone America/Los_Angeles
-    ;;
-  4)
-    echo -e "${BLUE}正在设置时区为 伦敦 (零时区, UTC+0)...${NC}"
-    sudo timedatectl set-timezone Europe/London
-    ;;
-  5)
-    echo -e "${BLUE}正在设置时区为 东京 (东九区, UTC+9)...${NC}"
-    sudo timedatectl set-timezone Asia/Tokyo
-    ;;
-  6)
-    echo -e "${BLUE}正在设置时区为 巴黎 (欧洲中部时区, UTC+1)...${NC}"
-    sudo timedatectl set-timezone Europe/Paris
-    ;;
-  7)
-    echo -e "${BLUE}正在设置时区为 曼谷 (东七区, UTC+7)...${NC}"
-    sudo timedatectl set-timezone Asia/Bangkok
-    ;;
-  8)
-    echo -e "${BLUE}正在设置时区为 悉尼 (东十区, UTC+10)...${NC}"
-    sudo timedatectl set-timezone Australia/Sydney
-    ;;
-  9)
-    echo -e "${BLUE}正在设置时区为 迪拜 (海湾标准时区, UTC+4)...${NC}"
-    sudo timedatectl set-timezone Asia/Dubai
-    ;;
-  10)
-    echo -e "${BLUE}正在设置时区为 里约热内卢 (巴西时间, UTC-3)...${NC}"
-    sudo timedatectl set-timezone America/Sao_Paulo
-    ;;
-  11)
-    echo -e "${YELLOW}您选择维持当前时区，脚本将继续执行。${NC}"
-    ;;
-  *)
-    echo -e "${YELLOW}无效选项，选择维持当前时区。${NC}"
-    ;;
-esac
-
-# 提示用户时区已设置完成
-echo -e "${GREEN}时区设置完成！${NC}"
-echo
-
-# 检测当前的 SWAP 配置
-echo -e "${BLUE}正在检测当前的内存和 SWAP 配置...${NC}"
-echo
-
-# 使用 swapon -s 方法检查
-swap_info=$(swapon -s)
-
-# 使用 free 命令检查
-free_info=$(free -h | grep -i swap)
-
-# 如果 SWAP 已配置，则显示当前 SWAP 配置
-if [ -n "$swap_info" ] || [ -n "$free_info" ]; then
-  echo -e "${BLUE}当前内存和 SWAP 配置：${NC}"
-  free -h
-else
-  # 如果没有配置 SWAP，则显示无 SWAP
-  echo -e "${YELLOW}当前没有配置 SWAP 分区。${NC}"
-  free -h
-fi
-
-# 提示用户选择操作：增加、减少、或者不调整 SWAP
-echo -e "${BLUE}请选择操作：${NC}"
-echo "1) 增加 SWAP"
-echo "2) 减少 SWAP"
-echo "3) 不调整 SWAP"
-read -p "请输入选项 (1/2/3): " swap_choice
-
-case $swap_choice in
-  1)
-    # 增加 SWAP
-    read -p "请输入增加的 SWAP 大小 (单位 MB): " swap_add_size
-    echo -e "${BLUE}正在增加 $swap_add_size MB 的 SWAP...${NC}"
-    
-    # 创建 SWAP 文件
-    sudo dd if=/dev/zero of=/swapfile bs=1M count=$swap_add_size
-    sudo chmod 600 /swapfile
-    
-    # 格式化 SWAP 文件
-    sudo mkswap /swapfile
-    
-    # 启用 SWAP 文件
-    sudo swapon /swapfile
-    
-    # 将 SWAP 文件添加到 /etc/fstab，确保重启后生效
-    if ! grep -q "/swapfile" /etc/fstab; then
-        echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
-    fi
-    
-    echo -e "${GREEN}已成功增加 $swap_add_size MB 的 SWAP。${NC}"
-    ;;
-  2)
-    # 减少 SWAP
-    read -p "请输入减少的 SWAP 大小 (单位 MB): " swap_reduce_size
-    echo -e "${BLUE}正在减少 $swap_reduce_size MB 的 SWAP...${NC}"
-    
-    # 获取当前 SWAP 大小
-    current_swap_size=$(free -m | grep Swap | awk '{print $2}')
-    
-    # 检查输入的减少大小是否有效
-    if [ "$swap_reduce_size" -gt "$current_swap_size" ]; then
-        echo -e "${YELLOW}警告：减少的大小超过当前 SWAP 大小，将完全禁用 SWAP。${NC}"
-        swap_reduce_size=$current_swap_size
-    fi
-    
-    # 计算新的 SWAP 大小
-    new_swap_size=$((current_swap_size - swap_reduce_size))
-    
-    # 禁用当前的 SWAP
-    sudo swapoff /swapfile
-    
-    # 如果新的 SWAP 大小大于 0，则调整 SWAP 文件大小
-    if [ "$new_swap_size" -gt 0 ]; then
-        # 调整 SWAP 文件大小
-        sudo dd if=/dev/zero of=/swapfile bs=1M count=$new_swap_size
-        sudo chmod 600 /swapfile
-        
-        # 格式化 SWAP 文件
-        sudo mkswap /swapfile
-        
-        # 启用 SWAP 文件
-        sudo swapon /swapfile
-        
-        echo -e "${GREEN}已成功减少 $swap_reduce_size MB 的 SWAP，当前 SWAP 大小为 $new_swap_size MB。${NC}"
-    else
-        # 如果新的 SWAP 大小为 0，则删除 SWAP 文件
-        sudo rm /swapfile
-        
-        # 从 /etc/fstab 中移除 SWAP 配置
-        if grep -q "/swapfile" /etc/fstab; then
-            sudo sed -i '/\/swapfile/d' /etc/fstab
-        fi
-        
-        echo -e "${GREEN}已完全禁用 SWAP。${NC}"
-    fi
-    ;;
-  3)
-    # 不调整 SWAP
-    echo -e "${YELLOW}您选择不调整 SWAP。${NC}"
-    ;;
-  *)
-    echo -e "${YELLOW}无效选项，退出程序。${NC}"
-    ;;
-esac
-
-# 提示当前的内存和 SWAP 信息
-echo -e "${BLUE}当前的内存和 SWAP 配置：${NC}"
-free -h
-echo
-
-# 提示按 Enter 键继续
-read -p "已显示当前的内存和 SWAP 配置，按 Enter 键继续..."
+    echo -e "${GREEN}BBR 和 FQ 已成功启用！${NC}"
+}
 
 # 检查是否已启用 BBR
 check_bbr() {
@@ -839,30 +669,6 @@ show_bbr_info() {
     
     # 显示当前的默认队列调度器
     echo -e "${BLUE}当前系统的默认队列调度器: $(sysctl net.core.default_qdisc | awk '{print $3}')${NC}"
-}
-
-# 启用 BBR+FQ
-enable_bbr_fq() {
-    echo -e "${BLUE}正在启用 BBR 和 FQ 加速方案...${NC}"
-
-    # 启用 BBR
-    sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
-
-    # 启用 FQ（FQ是BBR的配套方案）
-    sudo sysctl -w net.core.default_qdisc=fq
-
-    # 永久启用 BBR 和 FQ（在 /etc/sysctl.conf 中添加配置）
-    if ! grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.conf; then
-        echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf
-    fi
-    if ! grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf; then
-        echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf
-    fi
-
-    # 重新加载 sysctl 配置
-    sudo sysctl -p
-
-    echo -e "${GREEN}BBR 和 FQ 已成功启用！${NC}"
 }
 
 # 主程序
@@ -991,7 +797,7 @@ if [ "$bbr_modified" = true ]; then
     read -p "是否现在重启系统？(y/n): " reboot_choice
     if [[ "$reboot_choice" == "y" || "$reboot_choice" == "Y" ]]; then
         echo -e "${GREEN}正在重启系统...${NC}"
-        sudo reboot
+        reboot
     else
         echo -e "${YELLOW}您选择稍后手动重启系统。${NC}"
     fi
@@ -1000,4 +806,4 @@ else
 fi
 
 echo -e "${GREEN}所有操作已完成，系统已经优化并增强了安全性！${NC}"
-echo -e "${YELLOW}如果修改了SSH端口，记得在SSH工具上修改为新的端口，否则无法连接${NC}"
+echo -e "${YELLOW}如果修改了SSH端口，记得在SSH工具上修改为新的端口，否则无法连接。${NC}"
