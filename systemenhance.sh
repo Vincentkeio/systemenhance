@@ -410,6 +410,9 @@ manage_swap(){
             echo -e "${BLUE}调整后的内存和 SWAP 使用情况：${NC}"
             free -h
             echo
+
+            # 提示按回车键继续
+            read -p "按回车键继续..." dummy
             ;;
         *)
             # 不调整 SWAP
@@ -468,6 +471,7 @@ change_ssh_port(){
     fi
 
     # 修改SSH配置文件
+    sed -i "s/^#Port .*/Port $new_port/" /etc/ssh/sshd_config
     sed -i "s/^Port .*/Port $new_port/" /etc/ssh/sshd_config
 
     # 允许新端口通过防火墙
@@ -497,6 +501,7 @@ enable_firewall(){
 
     if command -v ufw &>/dev/null; then
         # 启用UFW
+        echo -e "${GREEN}启用UFW防火墙...${NC}"
         ufw enable
         # 默认拒绝入站，允许出站
         ufw default deny incoming
@@ -510,6 +515,7 @@ enable_firewall(){
         echo -e "${GREEN}UFW防火墙已启用并配置完毕。${NC}"
     elif command -v firewall-cmd &>/dev/null; then
         # 启用firewalld
+        echo -e "${GREEN}启用firewalld防火墙...${NC}"
         systemctl start firewalld
         systemctl enable firewalld
         # 默认拒绝入站，允许出站
