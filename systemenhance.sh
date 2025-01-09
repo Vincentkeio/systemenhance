@@ -842,7 +842,8 @@ else
         # 用户选择启用 BBR+FQ
         enable_bbr_fq
         echo -e "${YELLOW}BBR+FQ 已启用，您需要重启系统才能生效。${NC}"
-        echo -e "${YELLOW}请通过运行 'sudo reboot' 命令重启系统，或者稍后手动重启。${NC}"
+        # 标记 BBR 被修改
+        bbr_modified=true
     elif [[ "$choice" == "2" ]]; then
         # 用户选择不启用
         echo -e "${YELLOW}维持当前配置，跳过 BBR 加速启用部分，继续执行脚本的其他部分。${NC}"
@@ -936,6 +937,19 @@ echo -e "8) ${GREEN}根据您的选择，已设置BBR。${NC}"
 echo -e "9) ${GREEN}清理了系统垃圾文件和临时文件。${NC}"
 echo -e "10) ${GREEN}根据您的选择，已清理了不需要的系统日志文件。${NC}"
 
+# 询问是否重启
+if [ "$bbr_modified" = true ]; then
+    echo -e "${YELLOW}刚才修改了BBR设置，需要重启后才能生效。${NC}"
+    read -p "是否现在重启系统？(y/n): " reboot_choice
+    if [[ "$reboot_choice" == "y" || "$reboot_choice" == "Y" ]]; then
+        echo -e "${GREEN}正在重启系统...${NC}"
+        sudo reboot
+    else
+        echo -e "${YELLOW}您选择稍后手动重启系统。${NC}"
+    fi
+else
+    echo -e "${GREEN}系统优化完成，无需重启。${NC}"
+fi
+
 echo -e "${GREEN}所有操作已完成，系统已经优化并增强了安全性！${NC}"
-echo -e "${YELLOW}如果设置了打开BBR，需重启后生效，可以输入reboot${NC}"
 echo -e "${YELLOW}如果修改了SSH端口，记得在SSH工具上修改为新的端口，否则无法连接${NC}"
