@@ -100,6 +100,18 @@ echo -e "内核版本: ${GREEN}$KERNEL_VERSION${NC}"
 echo -e "系统架构: ${GREEN}$SYSTEM_ARCH${NC}"
 echo
 
+# 显示当前磁盘空间和SWAP大小
+echo -e "${BLUE}当前磁盘空间：${NC}"
+df -h
+echo
+
+echo -e "${BLUE}当前SWAP配置：${NC}"
+swapon --show
+echo
+echo -e "${BLUE}SWAP详情：${NC}"
+free -h
+echo
+
 # 二、更新系统
 echo -e "${BLUE}正在更新系统...${NC}"
 echo
