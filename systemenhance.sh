@@ -100,21 +100,6 @@ echo -e "内核版本: ${GREEN}$KERNEL_VERSION${NC}"
 echo -e "系统架构: ${GREEN}$SYSTEM_ARCH${NC}"
 echo
 
-# 二、更新系统
-echo -e "${BLUE}正在更新系统...${NC}"
-echo
-if command -v apt &> /dev/null; then
-  apt update && apt upgrade -y
-elif command -v yum &> /dev/null; then
-  yum update -y
-else
-  echo -e "${RED}未检测到 apt 或 yum，无法更新系统${NC}"
-  exit 1
-fi
-
-echo -e "${GREEN}系统更新完成。${NC}"
-echo
-
 # 一、检查并安装常用组件
 echo -e "${BLUE}正在检查并安装常用组件：sudo, wget, curl, fail2ban, ufw...${NC}"
 echo
@@ -332,9 +317,12 @@ increase_swap() {
 
     # 创建或扩展 SWAP 文件
     if [ ! -f "$new_swap_file" ]; then
+        # 创建新的 SWAP 文件
+        echo -e "${BLUE}正在创建新的 SWAP 文件 $new_swap_file...${NC}"
         fallocate -l "${swap_add_size}M" "$new_swap_file" 2>/dev/null
         if [ $? -ne 0 ]; then
             # 如果 fallocate 不可用，使用 dd
+            echo -e "${BLUE}fallocate 不可用，使用 dd 创建 SWAP 文件...${NC}"
             dd if=/dev/zero bs=1M count="$swap_add_size" of="$new_swap_file" status=progress
             if [ $? -ne 0 ]; then
                 echo -e "${RED}错误：无法创建 SWAP 文件 $new_swap_file${NC}"
@@ -343,13 +331,22 @@ increase_swap() {
         fi
     else
         # 扩展现有 SWAP 文件
-        # 注意：fallocate 不支持缩小文件，因此这里只能通过增加大小
+        echo -e "${BLUE}正在扩展现有 SWAP 文件 $new_swap_file...${NC}"
+        # 禁用 SWAP 文件
+        swapoff "$new_swap_file" 2>/dev/null
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}错误：无法禁用 SWAP 文件 $new_swap_file${NC}"
+            return
+        fi
+
+        # 扩展 SWAP 文件
         fallocate -l "+${swap_add_size}M" "$new_swap_file" 2>/dev/null
         if [ $? -ne 0 ]; then
             # 如果 fallocate 不可用，使用 dd
-            current_size=$(stat -c%s "$new_swap_file")
-            new_size=$((current_size / 1048576 + swap_add_size))
-            dd if=/dev/zero bs=1M count="$swap_add_size" of="$new_swap_file" seek=$(($current_size / 1048576)) conv=notrunc status=progress
+            current_size_mb=$(stat -c%s "$new_swap_file")
+            current_size_mb=$((current_size_mb / 1048576))
+            echo -e "${BLUE}fallocate 不可用，使用 dd 扩展 SWAP 文件...${NC}"
+            dd if=/dev/zero bs=1M count="$swap_add_size" of="$new_swap_file" seek="$current_size_mb" conv=notrunc status=progress
             if [ $? -ne 0 ]; then
                 echo -e "${RED}错误：无法扩展 SWAP 文件 $new_swap_file${NC}"
                 return
@@ -440,10 +437,12 @@ decrease_swap() {
                 # 从 /etc/fstab 中移除
                 sed -i "/^$swap_file\s/d" /etc/fstab
             else
-                # 创建新的 SWAP 文件大小
+                # 调整 SWAP 文件大小
+                echo -e "${BLUE}正在调整 SWAP 文件 $swap_file 大小为 $new_swap_size_mb MB...${NC}"
                 fallocate -l "${new_swap_size_mb}M" "$swap_file" 2>/dev/null
                 if [ $? -ne 0 ]; then
                     # fallocate 不可用，使用 dd
+                    echo -e "${BLUE}fallocate 不可用，使用 dd 调整 SWAP 文件大小...${NC}"
                     dd if=/dev/zero bs=1M count="$new_swap_size_mb" of="$swap_file" conv=notrunc status=progress
                     if [ $? -ne 0 ]; then
                         echo -e "${RED}错误：无法调整 SWAP 文件大小 $swap_file。${NC}"
@@ -510,7 +509,34 @@ echo -e "${BLUE}修改后的SWAP详情：${NC}"
 free -h
 echo
 
-# 检查SSH服务是否安装并运行
+# 四、检查并处理 SWAP 分区
+handle_swap_partitions() {
+    # 获取所有 SWAP 分区
+    swap_partitions=($(swapon --show=NAME,TYPE --noheadings | awk '$2=="partition"{print $1}'))
+
+    if [ "${#swap_partitions[@]}" -eq 0 ]; then
+        echo -e "${GREEN}未检测到 SWAP 分区。${NC}"
+    else
+        echo -e "${YELLOW}检测到以下 SWAP 分区：${NC}"
+        for partition in "${swap_partitions[@]}"; do
+            echo -e " - ${GREEN}$partition${NC}"
+        done
+        echo -e "${YELLOW}由于 SWAP 分区无法通过脚本自动调整大小，请手动管理这些分区。${NC}"
+        echo -e "${YELLOW}以下是手动调整 SWAP 分区大小的建议步骤：${NC}"
+        echo -e "1. 备份重要数据。"
+        echo -e "2. 禁用 SWAP 分区：sudo swapoff /dev/your_swap_partition"
+        echo -e "3. 使用分区工具（如 fdisk, parted）调整分区大小。"
+        echo -e "4. 重新格式化为 SWAP 分区：sudo mkswap /dev/your_swap_partition"
+        echo -e "5. 启用 SWAP 分区：sudo swapon /dev/your_swap_partition"
+        echo -e "6. 确保 /etc/fstab 中的 SWAP 分区配置正确。"
+    fi
+}
+
+# 调用 SWAP 分区处理函数
+handle_swap_partitions
+echo
+
+# 五、检查SSH服务是否安装并运行
 check_ssh_service() {
   echo -e "${BLUE}现在开始检测SSH服务...${NC}"
   echo
@@ -718,7 +744,7 @@ check_firewall() {
 check_ssh_service
 echo
 
-# 函数：启用 BBR+FQ
+# 四、启用 BBR+FQ
 enable_bbr_fq() {
     echo -e "${BLUE}正在启用 BBR 和 FQ 加速方案...${NC}"
 
@@ -795,7 +821,7 @@ fi
 echo -e "${GREEN}继续执行脚本的其他部分...${NC}"
 echo
 
-# 四、清理系统垃圾
+# 五、清理系统垃圾
 echo -e "${BLUE}开始清理系统垃圾...${NC}"
 echo
 
@@ -823,7 +849,7 @@ find /var/tmp -type f -mtime +7 -exec rm -f {} \;
 echo -e "${GREEN}系统垃圾清理完成！${NC}"
 echo
 
-# 五、清理日志文件（用户选择清理时间范围）
+# 六、清理日志文件（用户选择清理时间范围）
 echo -e "${BLUE}请选择要清理的日志文件时间范围：${NC}"
 echo "1) 清除一周内的日志"
 echo "2) 清除一月内的日志"
@@ -861,7 +887,7 @@ esac
 echo -e "${GREEN}日志清理完成！${NC}"
 echo
 
-# 六、系统优化完成提示
+# 七、系统优化完成提示
 echo -e "${GREEN}系统优化完成！${NC}"
 echo
 
