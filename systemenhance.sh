@@ -85,15 +85,12 @@ install_common_packages() {
 # 配置网络优先级
 configure_network_priority() {
     echo -e "${BLUE}正在配置网络优先级...${NC}"
-    ipv4_address=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+    local_ipv4=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+    external_ipv4=$(curl -s https://api.ipify.org)
     ipv6_address=$(ip -6 addr show | grep -oP '(?<=inet6\s)[0-9a-f:]+(?=/)' | grep -vE '^fe80|^::1' | head -n 1)
 
-    if [ -z "$ipv4_address" ]; then
-        echo -e "${YELLOW}本机无IPv4地址${NC}"
-    else
-        echo -e "${GREEN}本机IPv4地址: $ipv4_address${NC}"
-    fi
-
+    echo -e "${GREEN}本地IPv4地址: $local_ipv4${NC}"
+    echo -e "${GREEN}外网IPv4地址: $external_ipv4${NC}"
     if [ -z "$ipv6_address" ]; then
         echo -e "${YELLOW}本机无IPv6地址${NC}"
     else
@@ -116,15 +113,29 @@ configure_network_priority() {
     select choice in "IPv4优先" "IPv6优先" "取消"; do
         case $choice in
             "IPv4优先")
-                echo -e "${GREEN}设置IPv4优先${NC}"
-                sudo sysctl -w net.ipv6.conf.all.prefer_ipv4=1
-                echo "net.ipv6.conf.all.prefer_ipv4=1" | sudo tee -a /etc/sysctl.conf > /dev/null
+                if sysctl net.ipv6.conf.all.prefer_ipv4 >/dev/null 2>&1; then
+                    sudo sysctl -w net.ipv6.conf.all.prefer_ipv4=1
+                    echo "net.ipv6.conf.all.prefer_ipv4=1" | sudo tee -a /etc/sysctl.conf > /dev/null
+                    echo -e "${GREEN}已设置IPv4优先${NC}"
+                else
+                    echo -e "${YELLOW}prefer_ipv4 参数不可用，请手动修改 /etc/gai.conf 配置文件。${NC}"
+                    echo "建议设置："
+                    echo "precedence ::ffff:0:0/96  100"
+                    echo "precedence ::/0             150"
+                fi
                 break
                 ;;
             "IPv6优先")
-                echo -e "${GREEN}设置IPv6优先${NC}"
-                sudo sysctl -w net.ipv6.conf.all.prefer_ipv4=0
-                echo "net.ipv6.conf.all.prefer_ipv4=0" | sudo tee -a /etc/sysctl.conf > /dev/null
+                if sysctl net.ipv6.conf.all.prefer_ipv4 >/dev/null 2>&1; then
+                    sudo sysctl -w net.ipv6.conf.all.prefer_ipv4=0
+                    echo "net.ipv6.conf.all.prefer_ipv4=0" | sudo tee -a /etc/sysctl.conf > /dev/null
+                    echo -e "${GREEN}已设置IPv6优先${NC}"
+                else
+                    echo -e "${YELLOW}prefer_ipv4 参数不可用，请手动修改 /etc/gai.conf 配置文件。${NC}"
+                    echo "建议设置："
+                    echo "precedence ::ffff:0:0/96  100"
+                    echo "precedence ::/0             150"
+                fi
                 break
                 ;;
             "取消")
@@ -165,12 +176,16 @@ configure_ssh_port() {
 # 启用BBR
 enable_bbr() {
     echo -e "${BLUE}正在启用BBR...${NC}"
-    sudo modprobe tcp_bbr
-    echo "tcp_bbr" | sudo tee -a /etc/modules-load.d/modules.conf > /dev/null
-    sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
-    echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf > /dev/null
-    sudo sysctl -p
-    echo -e "${GREEN}BBR已启用${NC}"
+    if grep -q "CONFIG_TCP_BBR" /boot/config-$(uname -r); then
+        sudo modprobe tcp_bbr
+        echo "tcp_bbr" | sudo tee -a /etc/modules-load.d/modules.conf > /dev/null
+        sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
+        echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf > /dev/null
+        sudo sysctl -p
+        echo -e "${GREEN}BBR已启用${NC}"
+    else
+        echo -e "${YELLOW}内核不支持BBR，请升级内核。${NC}"
+    fi
 }
 
 # 清理系统垃圾
