@@ -217,13 +217,13 @@ check_and_set_network_priority() {
 
     # 显示IPv4和IPv6地址，或提示没有该地址
     if [ -z "$ipv4_address" ]; then
-        echo -e "${YELLOW}⚠️  提示：本机无IPv4地址。${NC}"
+        print_warning "提示：本机无IPv4地址。"
     else
         echo -e "${WHITE}本机IPv4地址 :${NC} ${GREEN}$ipv4_address${NC}"
     fi
 
     if [ -z "$ipv6_address" ]; then
-        echo -e "${YELLOW}⚠️  提示：本机无IPv6地址。${NC}"
+        print_warning "提示：本机无IPv6地址。"
     else
         echo -e "${WHITE}本机IPv6地址 :${NC} ${GREEN}$ipv6_address${NC}"
     fi
@@ -441,7 +441,7 @@ check_firewall() {
             print_warning "提示：防火墙未启用，且新端口未被防火墙阻拦。"
         else
             # 检查新端口是否已在防火墙规则中放行
-            if ! sudo ufw status | grep -q "$new_port/tcp"; then
+            if ! sudo ufw status | grep -qw "$new_port/tcp"; then
                 sudo ufw allow $new_port/tcp
                 print_success "防火墙已启用，新端口已添加放行规则。"
             else
@@ -649,8 +649,6 @@ print_success "SSH 端口已开放。"
 if [ -n "$new_port" ]; then
     sudo ufw allow $new_port/tcp
     echo -e "${WHITE}新端口 :${NC} ${GREEN}$new_port${NC} ${WHITE}已开放。${NC}"
-else
-    print_warning "未检测到新的SSH端口，跳过开放新端口。"
 fi
 
 # 关闭旧端口
@@ -824,169 +822,121 @@ manage_swap(){
     print_separator
     echo
 
-    echo -e "${PURPLE}⚙️  请选择操作：${NC}"
-    echo "1) ${GREEN}将 SWAP 大小调整为指定值${NC}"
-    echo "2) ${YELLOW}不调整 SWAP${NC}"
-    read -p "请输入选项 (1 或 按回车默认不调整): " swap_choice
+    print_info "开始调整 SWAP 大小..."
+    read -p "请输入新的 SWAP 大小（单位MB）: " new_swap_size
 
-    case "$swap_choice" in
-        1)
-            # 调整 SWAP 大小
-            print_info "开始调整 SWAP 大小..."
-            read -p "请输入新的 SWAP 大小（单位MB）: " new_swap_size
+    # 验证输入是否为正整数
+    if ! [[ "$new_swap_size" =~ ^[0-9]+$ ]] || [ "$new_swap_size" -le 0 ]; then
+        print_error "错误：请输入一个有效的正整数大小（MB）。"
+        return
+    fi
 
-            # 验证输入是否为正整数
-            if ! [[ "$new_swap_size" =~ ^[0-9]+$ ]] || [ "$new_swap_size" -le 0 ]; then
-                print_error "错误：请输入一个有效的正整数大小（MB）。"
-                return
-            fi
+    # 检测是否有SWAP文件
+    swap_files=($(swapon --show=NAME,TYPE --noheadings | awk '$2=="file"{print $1}'))
+    swap_partitions=($(swapon --show=NAME,TYPE --noheadings | awk '$2=="partition"{print $1}'))
 
-            # 检测是否有SWAP文件
-            swap_files=($(swapon --show=NAME,TYPE --noheadings | awk '$2=="file"{print $1}'))
-            swap_partitions=($(swapon --show=NAME,TYPE --noheadings | awk '$2=="partition"{print $1}'))
+    if [ "${#swap_files[@]}" -gt 0 ]; then
+        # 如果有SWAP文件，删除并新建SWAP文件
+        selected_swap_file="${swap_files[0]}" # 选择第一个SWAP文件
+        print_info "正在调整 SWAP 文件 ${selected_swap_file} 大小为 ${new_swap_size} MB..."
 
-            if [ "${#swap_files[@]}" -gt 0 ]; then
-                # 如果有SWAP文件，调整SWAP文件大小
-                echo -e "${WHITE}检测到以下 SWAP 文件：${NC}"
-                select selected_swap_file in "${swap_files[@]}" "取消"; do
-                    if [[ "$selected_swap_file" == "取消" ]]; then
-                        print_warning "取消调整SWAP文件大小。"
-                        return
-                    elif [[ -n "$selected_swap_file" ]]; then
-                        break
-                    else
-                        print_error "无效选择，请重新选择。"
-                    fi
-                done
+        # 禁用 SWAP 文件
+        swapoff "$selected_swap_file" || { print_error "无法禁用 SWAP 文件 ${selected_swap_file}。"; return; }
 
-                print_info "正在调整 SWAP 文件 ${selected_swap_file} 大小为 ${new_swap_size} MB..."
+        # 删除 SWAP 文件
+        rm -f "$selected_swap_file" || { print_error "无法删除 SWAP 文件 ${selected_swap_file}。"; return; }
 
-                # 禁用 SWAP 文件
-                swapoff "$selected_swap_file" || { print_error "无法禁用 SWAP 文件 ${selected_swap_file}。"; return; }
+        # 创建新的 SWAP 文件
+        fallocate -l "${new_swap_size}M" "$selected_swap_file" 2>/dev/null || {
+            print_warning "fallocate 不可用，使用 dd 创建 SWAP 文件..."
+            dd if=/dev/zero bs=1M count="$new_swap_size" of="$selected_swap_file" status=progress || { print_error "无法创建 SWAP 文件 ${selected_swap_file}。"; return; }
+        }
 
-                # 删除 SWAP 文件
-                rm -f "$selected_swap_file" || { print_error "无法删除 SWAP 文件 ${selected_swap_file}。"; return; }
+        chmod 600 "$selected_swap_file"
+        mkswap "$selected_swap_file" || { print_error "无法格式化 SWAP 文件 ${selected_swap_file}。"; return; }
+        swapon "$selected_swap_file" || { print_error "无法启用 SWAP 文件 ${selected_swap_file}。"; return; }
 
-                # 创建新的 SWAP 文件
-                fallocate -l "${new_swap_size}M" "$selected_swap_file" 2>/dev/null || {
-                    print_warning "fallocate 不可用，使用 dd 创建 SWAP 文件..."
-                    dd if=/dev/zero bs=1M count="$new_swap_size" of="$selected_swap_file" status=progress || { print_error "无法创建 SWAP 文件 ${selected_swap_file}。"; return; }
-                }
+        # 备份 /etc/fstab
+        sudo cp /etc/fstab /etc/fstab.bak
+        print_warning "已备份 /etc/fstab 到 /etc/fstab.bak"
 
-                chmod 600 "$selected_swap_file"
-                mkswap "$selected_swap_file" || { print_error "无法格式化 SWAP 文件 ${selected_swap_file}。"; return; }
-                swapon "$selected_swap_file" || { print_error "无法启用 SWAP 文件 ${selected_swap_file}。"; return; }
+        # 确保 /etc/fstab 中的 SWAP 配置正确
+        if ! grep -q "^$selected_swap_file\s" /etc/fstab; then
+            echo "$selected_swap_file none swap defaults 0 0" | sudo tee -a /etc/fstab > /dev/null
+        fi
 
-                # 备份 /etc/fstab
-                sudo cp /etc/fstab /etc/fstab.bak
-                print_warning "已备份 /etc/fstab 到 /etc/fstab.bak"
+        print_success "SWAP 文件 ${selected_swap_file} 已成功调整为 ${new_swap_size} MB。"
+    elif [ "${#swap_partitions[@]}" -gt 0 ]; then
+        # 如果有SWAP分区，调整SWAP分区大小
+        selected_swap_partition="${swap_partitions[0]}" # 选择第一个SWAP分区
+        print_info "正在调整 SWAP 分区 ${selected_swap_partition} 大小为 ${new_swap_size} MB..."
 
-                # 确保 /etc/fstab 中的 SWAP 配置正确
-                if ! grep -q "^$selected_swap_file\s" /etc/fstab; then
-                    echo "$selected_swap_file none swap defaults 0 0" | sudo tee -a /etc/fstab > /dev/null
-                fi
+        # 禁用 SWAP 分区
+        swapoff "$selected_swap_partition" || { print_error "无法禁用 SWAP 分区 ${selected_swap_partition}。"; return; }
 
-                print_success "SWAP 文件 ${selected_swap_file} 已成功调整为 ${new_swap_size} MB。"
-            elif [ "${#swap_partitions[@]}" -gt 0 ]; then
-                # 如果有SWAP分区，调整SWAP分区大小
-                echo -e "${WHITE}检测到以下 SWAP 分区：${NC}"
-                select selected_swap_partition in "${swap_partitions[@]}" "取消"; do
-                    if [[ "$selected_swap_partition" == "取消" ]]; then
-                        print_warning "取消调整SWAP分区大小。"
-                        return
-                    elif [[ -n "$selected_swap_partition" ]]; then
-                        break
-                    else
-                        print_error "无效选择，请重新选择。"
-                    fi
-                done
+        # 获取磁盘设备和分区编号
+        disk=$(lsblk -no PKNAME "$selected_swap_partition")
+        partition_number=$(lsblk -no PARTNUM "$selected_swap_partition")
 
-                print_info "正在调整 SWAP 分区 ${selected_swap_partition} 大小为 ${new_swap_size} MB..."
+        # 检查 parted 是否安装
+        if ! command -v parted &>/dev/null; then
+            print_error "未安装 parted 工具。请手动安装 parted 并重试。"
+            return
+        fi
 
-                # 提示用户确认
-                read -p "调整SWAP分区可能影响系统稳定性，是否继续？(y/n): " confirm
-                if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-                    print_warning "取消调整SWAP分区大小。"
-                    return
-                fi
+        # 使用 parted 调整分区大小
+        print_info "使用 parted 调整分区大小..."
+        parted /dev/"$disk" --script resizepart "$partition_number" "${new_swap_size}MB" || { print_error "无法调整分区大小 ${selected_swap_partition}。请手动检查分区状态。"; return; }
 
-                # 禁用 SWAP 分区
-                swapoff "$selected_swap_partition" || { print_error "无法禁用 SWAP 分区 ${selected_swap_partition}。"; return; }
+        # 重新格式化为 SWAP 分区
+        print_info "正在格式化分区 ${selected_swap_partition} 为 SWAP..."
+        mkswap "$selected_swap_partition" || { print_error "无法格式化 SWAP 分区 ${selected_swap_partition}。"; return; }
 
-                # 获取磁盘设备和分区编号
-                disk=$(lsblk -no PKNAME "$selected_swap_partition")
-                partition_number=$(lsblk -no PARTNUM "$selected_swap_partition")
+        # 启用 SWAP 分区
+        swapon "$selected_swap_partition" || { print_error "无法启用 SWAP 分区 ${selected_swap_partition}。"; return; }
 
-                # 检查 parted 是否安装
-                if ! command -v parted &>/dev/null; then
-                    print_error "未安装 parted 工具。请手动安装 parted 并重试。"
-                    return
-                fi
+        # 备份 /etc/fstab
+        sudo cp /etc/fstab /etc/fstab.bak
+        print_warning "已备份 /etc/fstab 到 /etc/fstab.bak"
 
-                # 使用 parted 调整分区大小
-                print_info "使用 parted 调整分区大小..."
-                parted /dev/"$disk" --script resizepart "$partition_number" "${new_swap_size}MB" || { print_error "无法调整分区大小 ${selected_swap_partition}。请手动检查分区状态。"; return; }
+        # 确保 /etc/fstab 中的 SWAP 配置正确
+        if ! grep -q "^$selected_swap_partition\s" /etc/fstab; then
+            echo "$selected_swap_partition none swap defaults 0 0" | sudo tee -a /etc/fstab > /dev/null
+        fi
 
-                # 重新格式化为 SWAP 分区
-                print_info "正在格式化分区 ${selected_swap_partition} 为 SWAP..."
-                mkswap "$selected_swap_partition" || { print_error "无法格式化 SWAP 分区 ${selected_swap_partition}。"; return; }
+        print_success "SWAP 分区 ${selected_swap_partition} 已成功调整为 ${new_swap_size} MB。"
+    else
+        # 如果没有SWAP文件或分区，创建新的SWAP文件
+        print_warning "未检测到 SWAP 文件或 SWAP 分区。"
+        print_info "正在创建一个新的 SWAP 文件..."
 
-                # 启用 SWAP 分区
-                swapon "$selected_swap_partition" || { print_error "无法启用 SWAP 分区 ${selected_swap_partition}。"; return; }
+        # 创建新的 SWAP 文件
+        sudo fallocate -l "${new_swap_size}M" /swapfile 2>/dev/null || {
+            print_warning "fallocate 不可用，使用 dd 创建 SWAP 文件..."
+            sudo dd if=/dev/zero bs=1M count="$new_swap_size" of=/swapfile status=progress || { print_error "无法创建 SWAP 文件 /swapfile。"; return; }
+        }
 
-                # 备份 /etc/fstab
-                sudo cp /etc/fstab /etc/fstab.bak
-                print_warning "已备份 /etc/fstab 到 /etc/fstab.bak"
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile || { print_error "无法格式化 SWAP 文件 /swapfile。"; return; }
+        sudo swapon /swapfile || { print_error "无法启用 SWAP 文件 /swapfile。"; return; }
 
-                # 确保 /etc/fstab 中的 SWAP 配置正确
-                if ! grep -q "^$selected_swap_partition\s" /etc/fstab; then
-                    echo "$selected_swap_partition none swap defaults 0 0" | sudo tee -a /etc/fstab > /dev/null
-                fi
+        # 备份 /etc/fstab
+        sudo cp /etc/fstab /etc/fstab.bak
+        print_warning "已备份 /etc/fstab 到 /etc/fstab.bak"
 
-                print_success "SWAP 分区 ${selected_swap_partition} 已成功调整为 ${new_swap_size} MB。"
-            else
-                print_warning "未检测到 SWAP 文件或 SWAP 分区。"
-                print_info "是否要创建一个新的 SWAP 文件？"
-                read -p "请输入 (y/n): " create_swap
-                if [[ "$create_swap" == "y" || "$create_swap" == "Y" ]]; then
-                    print_info "开始创建新的 SWAP 文件..."
-                    sudo fallocate -l "${new_swap_size}M" /swapfile 2>/dev/null || {
-                        print_warning "fallocate 不可用，使用 dd 创建 SWAP 文件..."
-                        sudo dd if=/dev/zero bs=1M count="$new_swap_size" of=/swapfile status=progress || { print_error "无法创建 SWAP 文件 /swapfile。"; return; }
-                    }
-                    sudo chmod 600 /swapfile
-                    sudo mkswap /swapfile || { print_error "无法格式化 SWAP 文件 /swapfile。"; return; }
-                    sudo swapon /swapfile || { print_error "无法启用 SWAP 文件 /swapfile。"; return; }
+        # 添加 SWAP 文件到 /etc/fstab
+        if ! grep -q "^/swapfile\s" /etc/fstab; then
+            echo "/swapfile none swap defaults 0 0" | sudo tee -a /etc/fstab > /dev/null
+        fi
 
-                    # 备份 /etc/fstab
-                    sudo cp /etc/fstab /etc/fstab.bak
-                    print_warning "已备份 /etc/fstab 到 /etc/fstab.bak"
+        print_success "已成功创建并启用新的 SWAP 文件 /swapfile，大小为 ${new_swap_size} MB。"
+    fi
 
-                    # 添加 SWAP 文件到 /etc/fstab
-                    if ! grep -q "^/swapfile\s" /etc/fstab; then
-                        echo "/swapfile none swap defaults 0 0" | sudo tee -a /etc/fstab > /dev/null
-                    fi
-
-                    print_success "已成功创建并启用新的 SWAP 文件 /swapfile，大小为 ${new_swap_size} MB。"
-                else
-                    print_warning "未创建新的 SWAP 文件。"
-                fi
-            fi
-
-            # 显示新的 SWAP 信息
-            echo -e "${PURPLE}📊 调整后的内存和 SWAP 使用情况：${NC}"
-            free -h
-            print_separator
-            echo
-
-            # 提示按回车键继续
-            read -p "按回车键继续..." dummy
-            ;;
-        *)
-            # 不调整 SWAP
-            print_warning "您选择不调整 SWAP。"
-            ;;
-    esac
+    # 显示新的 SWAP 信息
+    echo -e "${PURPLE}📊 调整后的内存和 SWAP 使用情况：${NC}"
+    free -h
+    print_separator
+    echo
 }
 
 # 调用 SWAP 管理函数
@@ -1162,7 +1112,7 @@ echo -e "3) ${GREEN}设置了SSH端口，增强了远程登录安全性。${NC}"
 echo -e "4) ${GREEN}启用了防火墙并配置了常用端口，特别是 SSH 服务端口。${NC}"
 echo -e "5) ${GREEN}启用了 Fail2Ban 防护，增强了系统安全性。${NC}"
 echo -e "6) ${GREEN}根据您的选择，已调整系统时区设置。${NC}"
-echo -e "7) ${GREEN}根据您的选择，已调整或配置了 SWAP 大小。${NC}"
+echo -e "7) ${GREEN}已调整系统 SWAP 大小。${NC}"
 echo -e "8) ${GREEN}根据您的选择，已设置BBR。${NC}"
 echo -e "9) ${GREEN}清理了系统垃圾文件和临时文件。${NC}"
 echo -e "10) ${GREEN}根据您的选择，已清理了不需要的系统日志文件。${NC}"
