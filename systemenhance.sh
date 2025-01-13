@@ -622,32 +622,58 @@ else
     fi
 fi
 
-# 四、启用防火墙（UFW 或 firewalld）
-print_separator
-print_info "正在检查并启用防火墙..."
-print_separator
-echo
-
-# 检查是否安装了ufw
-if ! command -v ufw &>/dev/null; then
-    print_warning "未检测到 ufw，正在安装 ufw..."
-    if command -v apt &>/dev/null; then
-        # Ubuntu 或 Debian 系统
-        apt update
-        apt install -y ufw
-    elif command -v yum &>/dev/null; then
-        # CentOS 或 RHEL 系统
-        yum install -y ufw
-    fi
-fi
 
 # 确保ufw防火墙启用
 if ! sudo ufw status &>/dev/null; then
     print_warning "正在启用 ufw 防火墙..."
     sudo ufw enable
+    
+    # 如果启用失败，尝试修复
+    if ! sudo ufw status | grep -q "Status: active"; then
+        print_warning "ufw 启用失败，尝试修复..."
+        
+        # 1. 检查ufw服务是否运行
+        if ! systemctl is-active --quiet ufw; then
+            print_info "启动 ufw 服务..."
+            sudo systemctl start ufw
+        fi
+        
+        # 2. 检查ufw是否被禁用
+        if systemctl is-enabled --quiet ufw; then
+            print_info "确保 ufw 服务已启用..."
+            sudo systemctl enable ufw
+        fi
+        
+        # 3. 检查iptables是否存在冲突
+        print_info "检查iptables配置..."
+        sudo iptables -L | grep -q "ufw" || {
+            print_warning "检测到iptables配置可能冲突，正在重置..."
+            sudo iptables -F
+            sudo iptables -X
+        }
+        
+        # 4. 再次尝试启用
+        sudo ufw enable
+        if ! sudo ufw status | grep -q "Status: active"; then
+            print_error "错误：无法启用 ufw 防火墙，请手动检查！"
+            print_warning "您可以尝试以下命令手动修复："
+            echo "1. 检查服务状态：systemctl status ufw"
+            echo "2. 查看日志：journalctl -xe | grep ufw"
+            echo "3. 重置配置：ufw reset"
+            exit 1
+        fi
+    fi
 fi
 
-print_success "防火墙已启用。"
+# 修改重新加载防火墙规则的逻辑
+if sudo ufw status | grep -q "Status: active"; then
+    sudo ufw reload
+    print_success "防火墙规则已重新加载。"
+else
+    print_warning "防火墙未启用，跳过重新加载步骤。"
+fi
+
+
 
 # 开放新端口
 if [ -n "$new_port" ]; then
