@@ -508,6 +508,9 @@ check_firewall() {
 }
 
 # 安装并启动SSH服务
+// ... existing code ...
+
+# 安装并启动SSH服务
 install_ssh() {
     print_info "正在安装并启动SSH服务..."
     echo
@@ -516,7 +519,7 @@ install_ssh() {
         # Ubuntu/Debian 系统
         if ! systemctl is-active --quiet ssh; then
             print_warning "提示：SSH 服务未安装或未启动，正在安装 SSH 服务..."
-            apt update && apt install -y openssh-server
+            apt update && apt install -y openssh-server ufw  # 添加ufw安装
             systemctl enable ssh
             systemctl start ssh
             print_success "SSH 服务已安装并启动！"
@@ -525,7 +528,7 @@ install_ssh() {
         # CentOS/RHEL 系统
         if ! systemctl is-active --quiet sshd; then
             print_warning "提示：SSH 服务未安装或未启动，正在安装 SSH 服务..."
-            yum install -y openssh-server
+            yum install -y openssh-server firewalld  # 添加firewalld安装
             systemctl enable sshd
             systemctl start sshd
             print_success "SSH 服务已安装并启动！"
@@ -535,6 +538,8 @@ install_ssh() {
         return  # 跳过当前功能块，继续执行后续部分
     fi
 }
+
+// ... existing code ...
 
 # 调用检查SSH服务函数
 check_ssh_service
@@ -623,8 +628,23 @@ else
 fi
 
 
+// ... existing code ...
+
 # 确保ufw防火墙启用
 if ! sudo ufw status &>/dev/null; then
+    # 如果ufw未安装，先安装
+    if ! command -v ufw >/dev/null 2>&1; then
+        print_info "正在安装ufw防火墙..."
+        if [[ "$SYSTEM_NAME" == "Ubuntu" || "$SYSTEM_NAME" == "Debian" ]]; then
+            apt install -y ufw
+        elif [[ "$SYSTEM_NAME" == "CentOS" || "$SYSTEM_NAME" == "RedHat" || "$SYSTEM_NAME" == "RHEL" ]]; then
+            yum install -y ufw
+        else
+            print_error "无法识别的操作系统，无法安装ufw"
+            return
+        fi
+    fi
+    
     print_warning "正在启用 ufw 防火墙..."
     sudo ufw enable
     
@@ -664,6 +684,8 @@ if ! sudo ufw status &>/dev/null; then
         fi
     fi
 fi
+
+// ... existing code ...
 
 # 修改重新加载防火墙规则的逻辑
 if sudo ufw status | grep -q "Status: active"; then
