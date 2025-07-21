@@ -793,9 +793,7 @@ if [[ "$dns_choice" =~ ^[Yy]$ ]]; then
     # 备份原 resolv.conf
     cp /etc/resolv.conf /etc/resolv.conf.bak
     echo -e "nameserver $ns1\nnameserver $ns2" > /etc/resolv.conf
-    print_success "已更新 /etc/resolv.conf，新的 DNS:"
-    echo "nameserver $ns1"
-    echo "nameserver $ns2"
+    print_success "已更新 /etc/resolv.conf，新的 DNS: $ns1, $ns2"
 else
     print_info "保留现有 DNS 配置。"
 fi
