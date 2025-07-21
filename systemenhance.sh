@@ -774,6 +774,32 @@ echo
 
 # 完成提示
 print_separator
+print_separator
+print_info "当前系统 DNS 配置:"
+print_separator
+# 显示当前 nameserver
+if [ -f /etc/resolv.conf ]; then
+    echo "当前 /etc/resolv.conf 内容:"
+    grep "^nameserver" /etc/resolv.conf
+else
+    print_warning "/etc/resolv.conf 文件不存在，无法读取 DNS 配置。"
+fi
+
+# 询问是否替换 DNS 配置
+read -p "是否替换 DNS 配置？(y/n): " dns_choice
+if [[ "$dns_choice" =~ ^[Yy]$ ]]; then
+    read -p "请输入第一个 nameserver: " ns1
+    read -p "请输入第二个 nameserver: " ns2
+    # 备份原 resolv.conf
+    cp /etc/resolv.conf /etc/resolv.conf.bak
+    echo -e "nameserver $ns1\nnameserver $ns2" > /etc/resolv.conf
+    print_success "已更新 /etc/resolv.conf，新的 DNS:\"
+    echo "nameserver $ns1"
+    echo "nameserver $ns2"
+else
+    print_info "保留现有 DNS 配置。"
+fi
+
 print_success "脚本执行完成！"
 print_separator
 echo
